@@ -1,30 +1,95 @@
+module i2s_clock_gen #(parameter data_width = 16, parameter mclk_div = 5, parameter bclk_div = 2) (
+		input wire clk,
+		input wire reset,
+		
+		output reg mclk,
+		output reg bclk,
+		output reg lrclk
+	);
+
+	localparam  mclk_count_width = $clog2(mclk_div);
+	localparam  bclk_count_width = $clog2(bclk_div);
+	localparam lrclk_count_width = $clog2(4 * data_width);
+
+	reg [ mclk_count_width - 1 : 0]  mclk_ctr = 0;
+	reg [ bclk_count_width - 1 : 0]  bclk_ctr = 0;
+	reg [lrclk_count_width - 1 : 0] lrclk_ctr = 0;
+	
+	localparam [lrclk_count_width - 1 : 0] lrclk_count_max  = 4 * data_width - 1;
+	localparam [lrclk_count_width - 1 : 0] lrclk_count_half = 2 * data_width - 1;
+	
+	always @(posedge clk or posedge reset) begin
+		if (reset) begin
+			mclk_ctr  <= 0;
+			bclk_ctr  <= 0;
+			lrclk_ctr <= 0;
+			
+			mclk  <= 0;
+			bclk  <= 0;
+			lrclk <= 0;
+		end
+		else begin
+			if (mclk_ctr == mclk_div - 1) begin
+				mclk <= ~mclk;
+				mclk_ctr <= 0;
+				
+				if (bclk_ctr == bclk_div - 1) begin
+					bclk <= ~bclk;
+					bclk_ctr <= 0;
+					
+					if (lrclk_ctr == lrclk_count_max) begin
+						lrclk <= 0;
+						lrclk_ctr <= 0;
+					end
+					else begin
+						if (lrclk_ctr == lrclk_count_half)
+							lrclk <= 1;
+						
+						lrclk_ctr <= lrclk_ctr + 1;
+					end
+				end
+				else begin
+					bclk_ctr <= bclk_ctr + 1;
+				end
+			end
+			else begin
+				mclk_ctr <= mclk_ctr + 1;
+			end
+		end
+	end
+endmodule
+	
+
 // Generates LRCLK (word select) from BCLK.
 // 64 BCLK edges per LRCLK full period -> 32 BCLK per channel.
 // I2S timing: LRCLK edge marks start of half-frame, data MSB appears 1 BCLK later.
-module i2s_lrclk_gen (
+module i2s_lrclk_gen #(parameter data_width = 16) (
     input  wire bclk,   // bit clock driving I2S
     input  wire rst,    // synchronous reset (active high, in bclk domain)
     output reg  lrclk   // word-select: 0 = left, 1 = right (convention)
 );
 
-    reg [5:0] cnt = 6'd0;  // counts 0..63
+	localparam count_width = $clog2(4 * data_width);
+	localparam [count_width - 1 : 0] count_max  = 4 * data_width - 1;
+	localparam [count_width - 1 : 0] count_half = 2 * data_width - 1;
+
+    reg [count_width - 1 : 0] count = 0;  // counts 0..63
 
     always @(posedge bclk or posedge rst) begin
         if (rst) begin
-            cnt   <= 6'd0;
-            lrclk <= 1'b0;  // start on left channel
+            count   <= 0;
+            lrclk 	<= 0;  // start on left channel
         end else begin
-            if (cnt == 6'd63)
-                cnt <= 6'd0;
-            else
-                cnt <= cnt + 6'd1;
-
-            // Toggle LRCLK in the middle and at end of frame:
-            // 0..31: left, 32..63: right
-            if (cnt == 6'd31)
-                lrclk <= 1'b1;   // move to right channel
-            else if (cnt == 6'd63)
-                lrclk <= 1'b0;   // move back to left channel
+            if (count == count_max) begin
+				lrclk <= 0;
+                count <= 0;
+            end
+            else begin
+				if (count == count_half)
+					lrclk <= 1;
+				
+                count <= count + 1;
+			end
         end
     end
 

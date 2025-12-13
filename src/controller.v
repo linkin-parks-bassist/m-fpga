@@ -1,7 +1,7 @@
 `include "controller.vh"
 `include "block.vh"
 
-module pipeline_controller
+module control_unit
 	#(
 		parameter n_blocks 		= 32,
 		parameter n_block_registers 	= 16,
@@ -11,234 +11,246 @@ module pipeline_controller
 		input wire clk,
 		input wire reset,
 		
-		input wire [7:0] inp_byte,
-		input wire inp_ready,
+		input wire [7:0] in_byte,
+		input wire in_ready,
 		
-		output reg [$clog2(n_blocks) - 1 : 0] block_target,
+		output reg [$clog2(n_blocks)	  - 1 : 0] block_target,
 		output reg [`BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target,
 		output reg [`BLOCK_INSTR_WIDTH    - 1 : 0] instr_out,
-		output reg [data_width - 1 : 0] data_out,
+		output reg [data_width 			  - 1 : 0] data_out,
 		
-		output reg block_instr_write,
-		output reg block_reg_write,
-		output reg block_reg_update,
+		output reg [1:0] block_instr_write,
+		output reg [1:0] block_reg_write,
+		output reg [1:0] block_reg_update,
+		output reg [1:0] alloc_sram_delay,
 		
-		output reg alloc_sram_delay,
+		output reg swap_pipelines,
+		input wire pipelines_swapping,
+		output reg [1:0] reset_pipeline,
 		
-		output reg ready,
-		output reg inp_fifo_read,
+		output reg next,
 		
 		output reg invalid
 	);
-
-	reg [7:0] state;
+	
+	reg [7:0] in_byte_latched = 0;
+	reg [7:0] command = 0;
+	
+	localparam instr_n_bytes = `BLOCK_INSTR_WIDTH / 8;
+	
+	reg [7:0] state = `CONTROLLER_STATE_READY;
 	reg [7:0] ret_state;
 	
-	reg [7:0] command;
-	reg [7:0] inp_latched;
-	reg [data_width - 1 : 0] data;
+	reg [5:0] byte_ctr;
 	
-	reg [`BLOCK_INSTR_WIDTH : 0] instr;
+	reg load_block_number;
+	reg load_reg_number;
+	reg load_block_instr;
+	reg load_data;
 	
-	reg [31:0] word;
+	reg wait_one = 0;
 	
-	wire need_block_number = command[7];
-	wire need_reg_number   = command[6];
-	wire need_data		   = command[5];
-	wire need_instr		   = command[4];
+	wire target_pipeline = ~command[3];
 	
-	wire inp_is_valid_command = 
-	   (inp_byte == `COMMAND_WRITE_BLOCK_INSTR ||
-		inp_byte == `COMMAND_WRITE_BLOCK_REG   ||
-		inp_byte == `COMMAND_UPDATE_BLOCK_REG  ||
-		inp_byte == `COMMAND_ALLOC_SRAM_DELAY);
-	
-	localparam [7:0] block_number_read_target 	= 8'($clog2(n_blocks) / 8);
-	localparam [7:0] reg_number_read_target 	= 8'($clog2(n_block_registers) / 8);
-	localparam [7:0] data_read_target 			= 8'(data_width / 8);
-	localparam [7:0] instr_read_target 			= 8'(`BLOCK_INSTR_WIDTH / 8);
-	
-	reg [7:0] read_ctr;
-	
-	reg block_number_loaded = 0;
-	reg reg_number_loaded 	= 0;
-	reg data_loaded			= 0;
-	reg instr_loaded		= 0;
-	
-	always @(posedge clk) begin	
+	always @(posedge clk) begin
+		next 	<= 0;
+		invalid <= 0;
+		swap_pipelines <= 0;
+		reset_pipeline <= 0;
+		
 		block_instr_write 	<= 0;
 		block_reg_write 	<= 0;
 		block_reg_update 	<= 0;
-		alloc_sram_delay	<= 0;
-		inp_fifo_read 		<= 0;
-		invalid 			<= 0;
+		
+		alloc_sram_delay <= 0;
 		
 		if (reset) begin
-			block_target 	<= 0;
-			state 			<= `CONTROLLER_STATE_READY;
-			ready 			<= 1;
-			inp_fifo_read	<= 0;
-			invalid 		<= 0;
+			state <= `CONTROLLER_STATE_READY;
 		end
 		else begin
 			case (state)
 				`CONTROLLER_STATE_READY: begin
-					inp_fifo_read <= 1;
-					if (inp_ready) begin
-						if (inp_is_valid_command) begin
-							command <= inp_byte;
-							inp_fifo_read <= 0;
-							
-							state <= `CONTROLLER_STATE_ASSESS;
-							ready <= 0;
-							
-							block_number_loaded <= 0;
-							reg_number_loaded 	<= 0;
-							instr_loaded 		<= 0;
-							data_loaded 		<= 0;
-							
-							read_ctr <= 0;
-						end
-						else begin
-							invalid <= 1;
-						end
+					if (in_ready) begin
+						command <= in_byte;
+						next <= 1;
+						
+						state <= `CONTROLLER_STATE_BEGIN;
 					end
 				end
 				
-				`CONTROLLER_STATE_ASSESS: begin
-					if (need_block_number & !block_number_loaded) begin
-						state 		<= `CONTROLLER_STATE_LOAD_BLOCK_NUMBER;
-						read_ctr 	<= 0;
-						ret_state 	<= `CONTROLLER_STATE_ASSESS;
-						
-						inp_fifo_read <= 1;
-					end
-					else if (need_reg_number & !reg_number_loaded) begin
-						state 		<= `CONTROLLER_STATE_LOAD_REG_NUMBER;
-						read_ctr 	<= 0;
-						ret_state 	<= `CONTROLLER_STATE_ASSESS;
-						
-						inp_fifo_read <= 1;
-					end
-					else if (need_data & !data_loaded) begin
-						state 		<= `CONTROLLER_STATE_LOAD_DATA;
-						read_ctr 	<= 0;
-						ret_state 	<= `CONTROLLER_STATE_ASSESS;
-						
-						inp_fifo_read <= 1;
-					end
-					else if (need_instr & !instr_loaded) begin
-						state 		<= `CONTROLLER_STATE_LOAD_INSTR;
-						read_ctr 	<= 0;
-						ret_state 	<= `CONTROLLER_STATE_ASSESS;
-						
-						inp_fifo_read <= 1;
-					end
-					else begin
-						state <= `CONTROLLER_STATE_EXECUTE;
-					end
-				end
-				
-				`CONTROLLER_STATE_EXECUTE: begin
-					state <= `CONTROLLER_STATE_READY;
-					ready <= 1;
-					
+				`CONTROLLER_STATE_BEGIN: begin
 					case (command)
 						`COMMAND_WRITE_BLOCK_INSTR: begin
-							block_instr_write <= 1;
+							load_block_number <= 1;
+							load_reg_number	  <= 0;
+							load_data 		  <= 0;
+							load_block_instr  <= 1;
+							
+							state <= `CONTROLLER_STATE_GET_BLOCK_NUMBER;
+							ret_state <= `CONTROLLER_STATE_WRITE_BLOCK_INSTR;
 						end
-						
+
 						`COMMAND_WRITE_BLOCK_REG: begin
-							block_reg_write <= 1;
+							load_block_number <= 1;
+							load_reg_number	  <= 1;
+							load_data 		  <= 1;
+							load_block_instr  <= 0;
+							
+							state <= `CONTROLLER_STATE_GET_BLOCK_NUMBER;
+							ret_state <= `CONTROLLER_STATE_WRITE_BLOCK_REG;
 						end
-						
+
 						`COMMAND_UPDATE_BLOCK_REG: begin
-							block_reg_update <= 1;
+							load_block_number <= 1;
+							load_reg_number	  <= 1;
+							load_data 		  <= 1;
+							load_block_instr  <= 0;
+							
+							state <= `CONTROLLER_STATE_GET_BLOCK_NUMBER;
+							ret_state <= `CONTROLLER_STATE_UPDATE_BLOCK_REG;
 						end
-						
+
 						`COMMAND_ALLOC_SRAM_DELAY: begin
-							alloc_sram_delay <= 1;
+							load_block_number <= 0;
+							load_reg_number	  <= 0;
+							load_data 		  <= 1;
+							load_block_instr  <= 0;
+							
+							state <= `CONTROLLER_STATE_GET_DATA;
+							ret_state <= `CONTROLLER_STATE_ALLOC_SRAM_DELAY;
 						end
-						
+
+						`COMMAND_SWAP_PIPELINES: begin
+							swap_pipelines  <= 1;
+							wait_one 		<= 1;
+							state <= `CONTROLLER_STATE_SWAP_WAIT;
+						end
+
+						`COMMAND_RESET_PIPELINE: begin
+							reset_pipeline[target_pipeline] <= 1;
+							state <= `CONTROLLER_STATE_READY;
+						end
+
 						default: begin
 							invalid <= 1;
+							state <= `CONTROLLER_STATE_READY;
 						end
 					endcase
 				end
 				
-				`CONTROLLER_STATE_LOAD_BLOCK_NUMBER: begin
-					if (inp_ready) begin
-						block_target <= {block_target, inp_byte}[$clog2(n_blocks) - 1 : 0];
+				`CONTROLLER_STATE_GET_BLOCK_NUMBER: begin
+					if (wait_one) begin
+						wait_one <= 0;
+					end
+					else if (in_ready) begin
+						block_target <= in_byte[$clog2(n_blocks) - 1 : 0];
+						next <= 1;
 						
-						if (read_ctr + 1 >= block_number_read_target) begin
-							state 		<= ret_state;
-							read_ctr 	<= 0;
-							block_number_loaded <= 1;
+						byte_ctr <= 0;
+						
+						if (load_reg_number)  		state <= `CONTROLLER_STATE_GET_REG_NUMBER;
+						else if (load_data)	  		state <= `CONTROLLER_STATE_GET_DATA;
+						else if (load_block_instr) 	state <= `CONTROLLER_STATE_GET_INSTR;
+						else 						state <= ret_state;
+						
+						wait_one <= 1;
+					end
+				end
+				
+				
+				`CONTROLLER_STATE_GET_REG_NUMBER: begin
+					if (wait_one) begin
+						wait_one <= 0;
+					end
+					else if (in_ready) begin
+						reg_target <= in_byte[`BLOCK_REG_ADDR_WIDTH - 1 : 0];
+						next <= 1;
+						
+						byte_ctr <= 0;
+						
+						if (load_data)	  			state <= `CONTROLLER_STATE_GET_DATA;
+						else if (load_block_instr) 	state <= `CONTROLLER_STATE_GET_INSTR;
+						else 						state <= ret_state;
+						
+						wait_one <= 1;
+					end
+				end
+				
+				`CONTROLLER_STATE_GET_DATA: begin
+					if (wait_one) begin
+						wait_one <= 0;
+					end
+					else if (in_ready) begin
+						data_out <= {data_out, in_byte}[data_width - 1 : 0];
+						next <= 1;
+						
+						if (byte_ctr >= (data_width / 8) - 1) begin
+							byte_ctr <= 0;
+							
+							if (load_block_instr)
+								state <= `CONTROLLER_STATE_GET_INSTR;
+							else
+								state <= ret_state;
 						end
 						else begin
-							read_ctr <= read_ctr + 1;
+							byte_ctr <= byte_ctr + 1;
 						end
-					end
-					else begin
-						inp_fifo_read <= 1;
+						wait_one <= 1;
 					end
 				end
 				
-				`CONTROLLER_STATE_LOAD_REG_NUMBER: begin
-					if (inp_ready) begin
-						reg_target <= inp_byte[`BLOCK_REG_ADDR_WIDTH - 1 : 0];
-						
-						state 		<= ret_state;
-						read_ctr 	<= 0;
-						reg_number_loaded <= 1;
+				`CONTROLLER_STATE_GET_INSTR: begin
+					if (wait_one) begin
+						wait_one <= 0;
 					end
-					else begin
-						inp_fifo_read <= 1;
-					end
-				end
-				
-				`CONTROLLER_STATE_LOAD_DATA: begin
-					if (inp_ready) begin
-						data_out <= (data_out << 8) | {{(data_width - 8){1'b0}}, inp_byte};
+					else if (in_ready) begin
+						instr_out  <= {instr_out, in_byte}[`BLOCK_INSTR_WIDTH - 1 : 0];
+						next <= 1;
 						
-						if (read_ctr + 1 >= data_read_target) begin
-							state 		<= ret_state;
-							read_ctr 	<= 0;
-							data_loaded <= 1;
+						if (byte_ctr >= (`BLOCK_INSTR_WIDTH / 8) - 1) begin
+							byte_ctr <= 0;
+							
+							state <= ret_state;
 						end
 						else begin
-							read_ctr <= read_ctr + 1;
+							byte_ctr <= byte_ctr + 1;
 						end
-					end
-					else begin
-						inp_fifo_read <= 1;
+						wait_one <= 1;
 					end
 				end
 				
-				`CONTROLLER_STATE_LOAD_INSTR: begin
-					if (inp_ready) begin
-						instr_out <= (instr_out << 8) | {{(`BLOCK_INSTR_WIDTH - 8){1'b0}}, inp_byte};
-						
-						if (read_ctr + 1 >= instr_read_target) begin
-							state 		<= ret_state;
-							read_ctr 	<= 0;
-							instr_loaded <= 1;
-						end
-						else begin
-							read_ctr <= read_ctr + 1;
-						end
-					end
-					else begin
-						inp_fifo_read <= 1;
-					end
-				end
-				
-				default: begin
-					invalid <= 1;
+				`CONTROLLER_STATE_WRITE_BLOCK_INSTR: begin
+					block_instr_write[target_pipeline] <= 1;
 					state <= `CONTROLLER_STATE_READY;
+				end
+
+				`CONTROLLER_STATE_WRITE_BLOCK_REG: begin
+					block_reg_write[target_pipeline] <= 1;
+					state <= `CONTROLLER_STATE_READY;
+				end
+
+				`CONTROLLER_STATE_UPDATE_BLOCK_REG: begin
+					block_reg_update[target_pipeline] <= 1;
+					state <= `CONTROLLER_STATE_READY;
+				end
+
+				`CONTROLLER_STATE_ALLOC_SRAM_DELAY: begin
+					alloc_sram_delay[target_pipeline] <= 1;
+					state <= `CONTROLLER_STATE_READY;
+				end
+
+				`CONTROLLER_STATE_SWAP_WAIT: begin
+					if (wait_one) begin
+						if (pipelines_swapping) wait_one <= 0;
+					end
+					else begin
+						if (!pipelines_swapping) begin
+							state <= `CONTROLLER_STATE_READY;
+						end
+					end
 				end
 			endcase
 		end
 	end
-
+	
 endmodule

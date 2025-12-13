@@ -73,11 +73,19 @@ module pipeline
 		output wire [data_width - 1:0] out_sample,
 		output reg ready,
 		
-		input  wire [7:0] inp_byte,
-		input  wire inp_ready,
-		output reg  inp_fifo_read,
+		output wire error,
 		
-		output wire error
+		input wire [$clog2(n_blocks) 	  - 1 : 0] block_target,
+		input wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target,
+	
+		input wire [`BLOCK_INSTR_WIDTH - 1 : 0] instr_val,
+		input wire instr_write,
+	
+		input wire [data_width - 1 : 0] ctrl_data,
+		input wire reg_update,
+		input wire reg_write,
+	
+		input wire alloc_sram_delay
 	);
 	
 	reg signed [data_width - 1 : 0] sample_latched;
@@ -184,7 +192,7 @@ module pipeline
                 .instr_write(instr_write & (i == block_target)),
                 
                 .reg_target(reg_target),
-                .reg_val(ctrl_data_out),
+                .reg_val(ctrl_data),
                 .reg_write(reg_write & (i == block_target)),
                 .reg_update(reg_update & (i == block_target)),
                 
@@ -261,51 +269,14 @@ module pipeline
 			.invalid_request(invalid_lut_request)
 		);
 	
-	wire [$clog2(n_blocks) 		- 1 : 0] block_target;
-	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target;
-	
-	wire [`BLOCK_INSTR_WIDTH - 1 : 0] instr_val;
-	wire instr_write;
-	
-	wire [data_width - 1 : 0] ctrl_data_out;
-	wire reg_update;
-	wire reg_write;
-	
-	wire alloc_sram_delay;
-	
 	wire controller_ready;
 	wire invalid_command;
 	
-	pipeline_controller #(.n_blocks(n_blocks), .data_width(data_width), .n_block_registers(n_block_registers)) controller
-		(
-			.clk(clk),
-			.reset(reset),
-			
-			.inp_byte(inp_byte),
-			.inp_ready(inp_ready),
-			
-			.block_target(block_target),
-			.reg_target(reg_target),
-			.instr_out(instr_val),
-			.data_out(ctrl_data_out),
-			
-			.block_instr_write(instr_write),
-			.block_reg_write(reg_write),
-			.block_reg_update(reg_update),
-			
-			.alloc_sram_delay(alloc_sram_delay),
-			
-			.ready(controller_ready),
-			.inp_fifo_read(inp_fifo_read),
-			
-			.invalid(invalid_command)
-		);
+	
 	
 	wire sram_read;
 	wire sram_write;
 
-	localparam n_sram_banks = 128;
-	localparam sram_bank_size = 1024;
 	localparam sram_capacity = n_sram_banks * sram_bank_size;
 	localparam sram_addr_width = $clog2(sram_capacity + 1);
 
@@ -367,6 +338,20 @@ module pipeline
 	wire invalid_delay_write;
 	wire invalid_delay_alloc;
 	
+	wire [sram_addr_width - 1 : 0] ctrl_data_addr_width;
+	
+	generate
+		if (sram_addr_width < data_width) begin : ADDR_SMALL
+			assign ctrl_data_addr_width = ctrl_data[sram_addr_width - 1 : 0];
+		end
+		else if (sram_addr_width > data_width) begin : ADDR_BIG
+			assign ctrl_data_addr_width =  {{(sram_addr_width - data_width){1'b0}}, ctrl_data};
+		end
+		else begin : ADDR_SAME
+			assign ctrl_data_addr_width = ctrl_data;
+		end
+	endgenerate
+	
 	delay_master #(
 			.data_width(data_width), 
 			.n_sram_buffers(8),
@@ -381,7 +366,7 @@ module pipeline
 			.write_req(delay_write_arbiter_req),
 			
 			.alloc_sram_req(alloc_sram_delay),
-			.alloc_size(ctrl_data_out),
+			.alloc_size(ctrl_data_addr_width),
 			
 			.read_req_handle(delay_read_arbiter_handle),
 			.read_req_arg(delay_read_arbiter_arg),

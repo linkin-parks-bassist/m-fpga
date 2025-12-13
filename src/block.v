@@ -143,6 +143,19 @@ module pipeline_block
 	reg signed [data_width - 1 : 0] src_b_latched;
 	reg signed [data_width - 1 : 0] src_c_latched;
 	
+	// Explicitly sized saturation limits in FULL multiply width
+	localparam signed sat_max = {{(data_width + 1){1'b0}}, {(data_width - 1){1'b1}}};
+	localparam signed sat_min = {{(data_width + 1){1'b1}}, {(data_width - 1){1'b0}}};
+	
+	localparam signed sat_max_q3_29 = sat_max << 14;
+	localparam signed sat_min_q3_29 = sat_min << 14;
+	
+	localparam signed sat_max_dwe = sat_max[data_width : 0];
+	localparam signed sat_min_dwe = sat_min[data_width : 0];
+	
+	localparam signed sat_max_dw = sat_max[data_width - 1 : 0];
+	localparam signed sat_min_dw = sat_min[data_width - 1 : 0];
+	
 	//
 	// Local adder
 	//
@@ -158,21 +171,17 @@ module pipeline_block
 	// Async perform addition on given summands. Saturate in procedural block
 	wire signed [data_width:0] sum_ext = summand_a_ext + summand_b_ext;
 	
+	wire [data_width - 1 : 0] sum = (sum_ext > sat_max_dwe) ? sat_max_dw : ((sum_ext < sat_min_dwe) ? sat_min_dw : sum_ext[data_width-1:0]);
+	
 	//
 	// Saturation and format compensation for muls
 	//
 	localparam integer MAX_SHIFT = 2 * data_width - 2;
 	localparam integer SHIFT_WIDTH = $clog2(MAX_SHIFT + 1);
 	
-	wire [SHIFT_WIDTH - 1 : 0] instr_shift = (operation == `BLOCK_INSTR_BIQ_DF1) ? {{(SHIFT_WIDTH - 1){1'b0}}, 1'b1} :
+	wire [SHIFT_WIDTH - 1 : 0] instr_shift =
+		(operation == `BLOCK_INSTR_BIQ_DF1) ? {{(SHIFT_WIDTH - 1){1'b0}}, 1'b1} :
 		{{(SHIFT_WIDTH - `BLOCK_PMS_WIDTH){1'b0}}, instr[pms_start_index + `BLOCK_PMS_WIDTH - 1 : pms_start_index]};
-
-	// Explicitly sized saturation limits in FULL multiply width
-	wire signed [2*data_width-1:0] SAT_MAX_EXT =
-		{{(data_width){1'b0}}, {1'b0, {(data_width-1){1'b1}}}};
-
-	wire signed [2*data_width-1:0] SAT_MIN_EXT =
-		{{(data_width){1'b1}}, {1'b1, {(data_width-1){1'b0}}}};
 
 	// Arithmetic shift
 	wire signed [2 * data_width - 1 : 0] mul_result_shifted =
@@ -180,11 +189,10 @@ module pipeline_block
 
 	// Final saturation and narrowing
 	wire signed [data_width-1:0] mul_result_final =
-		(mul_result_shifted > SAT_MAX_EXT) ?  SAT_MAX_EXT[data_width-1:0] :
-		(mul_result_shifted < SAT_MIN_EXT) ?  SAT_MIN_EXT[data_width-1:0] :
-											 mul_result_shifted[data_width-1:0];
+		(mul_result_shifted > sat_max) ?  sat_max[data_width-1:0] :
+		(mul_result_shifted < sat_min) ?  sat_min[data_width-1:0] :
+							   mul_result_shifted[data_width-1:0];
 	
-	reg signed [data_width - 1 : 0] sum;
 	reg signed [data_width - 1 : 0] prod;
 	
 	reg wait_one = 0;
@@ -194,26 +202,19 @@ module pipeline_block
 	reg [8:0] state = 0;
 	
 	reg [data_width - 1 : 0] result;
+
+	reg  signed [2 * data_width - 1 : 0] accumulator;
+	
+	reg  signed [2 * data_width - 1 : 0] acc_summand;
+	wire signed [2 * data_width - 1 : 0] acc_sum = accumulator + acc_summand;
+	
+	wire signed [2 * data_width - 1 : 0] acc_q3_29_sat = (accumulator > sat_max_q3_29) ? sat_max_q3_29 : ((accumulator < sat_min_q3_29) ? sat_min_q3_29 : accumulator);
 	
 	integer i;
 	always @(posedge clk) begin
 	
 		if (done) begin
 			result <= ch_out[0];
-		end
-	
-		//
-		// Addition saturator
-		//
-		
-		if (sum_ext > $signed({1'b0, {data_width{1'b1}}})) begin
-			sum <= {1'b0, {data_width-1{1'b1}}};   // +32767
-		end
-		else if (sum_ext < $signed({1'b1, {data_width{1'b0}}})) begin
-			sum <= {1'b1, {data_width-1{1'b0}}};   // -32768
-		end
-		else begin
-			sum <= sum_ext[data_width-1:0];
 		end
 	
 		//
@@ -431,32 +432,23 @@ module pipeline_block
 					done <= 1;
 				end
 				
+				//y[n] = b0*x[n] + b1*x[n−1] + b2*x[n−2] − a1*y[n−1] − a2*y[n−2]
 				`BLOCK_INSTR_BIQ_DF1: begin
 					case (state)
 						`BLOCK_STATE_BEGIN: begin
-							src_a_latched <= unified_regs[src_a_unified_addr];
+							src_a_latched <= src_a_val;
 							
-							// Allow the coeffieicnts to be
-							// computed upstrean and passed
-							// down via channels; this is indicated
-							// by src_b_reg (since this instruction
-							// only takes one sample input)
-							// in which case, copy the coefficients
-							// into registers and proceed as normal.
-							if (src_b_reg) begin
-								regs[0] <= ch_regs[n_channels - 5];
-								regs[1] <= ch_regs[n_channels - 4];
-								regs[2] <= ch_regs[n_channels - 3];
-								regs[3] <= ch_regs[n_channels - 2];
-								regs[4] <= ch_regs[n_channels - 1];
-							
-								mul_req_a <= ch_regs[n_channels - 5];
-							end
-							else begin
-								mul_req_a <= regs[0];
-							end
-							
-							mul_req_b <= unified_regs[src_a_unified_addr];
+							// src b points to the start of the coefficients
+							// so that one can use channels as coefficients,
+							// for dynamically changing filters
+							regs[4] <= unified_regs[src_b_unified_addr + 0];
+							regs[5] <= unified_regs[src_b_unified_addr + 1];
+							regs[6] <= unified_regs[src_b_unified_addr + 2];
+							regs[7] <= unified_regs[src_b_unified_addr + 3];
+							regs[8] <= unified_regs[src_b_unified_addr + 4];
+						
+							mul_req_a <= src_a_val;
+							mul_req_b <= unified_regs[src_b_unified_addr + 0];
 							
 							wait_one <= 1;
 							state <= `BLOCK_STATE_BIQUAD_DF1_MUL_1_WAIT;
@@ -464,9 +456,9 @@ module pipeline_block
 					
 						`BLOCK_STATE_BIQUAD_DF1_MUL_1_WAIT: begin
 							if (mul_ready) begin
-								regs[9] <= mul_result_final;
+								accumulator <= mul_result;
 								
-								mul_req_a <= regs[1];
+								mul_req_a <= regs[0];
 								mul_req_b <= regs[5];
 								
 								wait_one <= 1;
@@ -479,23 +471,17 @@ module pipeline_block
 						
 						`BLOCK_STATE_BIQUAD_DF1_MAC_1_MUL_WAIT: begin
 							if (mul_ready) begin
+								acc_summand <= mul_result;
 								
-								summand_a <= regs[9];
-								summand_b <= mul_result_final;
-								
-								state <= `BLOCK_STATE_BIQUAD_DF1_MAC_1_ADD_WAIT;
+								state <= `BLOCK_STATE_BIQUAD_DF1_MAC_1_ACCUMULATE;
 							end
 							wait_one <= 0;
 						end
 						
-						`BLOCK_STATE_BIQUAD_DF1_MAC_1_ADD_WAIT: begin
-							state <= `BLOCK_STATE_BIQUAD_DF1_MAC_1_STORE;
-						end
-						
-						`BLOCK_STATE_BIQUAD_DF1_MAC_1_STORE: begin
-							regs[9] <= sum;
+						`BLOCK_STATE_BIQUAD_DF1_MAC_1_ACCUMULATE: begin
+							accumulator <= acc_sum;
 							
-							mul_req_a <= regs[2];
+							mul_req_a <= regs[1];
 							mul_req_b <= regs[6];
 							
 							wait_one <= 1;
@@ -504,23 +490,17 @@ module pipeline_block
 						
 						`BLOCK_STATE_BIQUAD_DF1_MAC_2_MUL_WAIT: begin
 							if (mul_ready) begin
+								acc_summand <= mul_result;
 								
-								summand_a <= regs[9];
-								summand_b <= mul_result_final;
-								
-								state <= `BLOCK_STATE_BIQUAD_DF1_MAC_2_ADD_WAIT;
+								state <= `BLOCK_STATE_BIQUAD_DF1_MAC_2_ACCUMULATE;
 							end
 							wait_one <= 0;
 						end
 						
-						`BLOCK_STATE_BIQUAD_DF1_MAC_2_ADD_WAIT: begin
-							state <= `BLOCK_STATE_BIQUAD_DF1_MAC_2_STORE;
-						end
-						
-						`BLOCK_STATE_BIQUAD_DF1_MAC_2_STORE: begin
-							regs[9] <= sum;
+						`BLOCK_STATE_BIQUAD_DF1_MAC_2_ACCUMULATE: begin
+							accumulator <= acc_sum;
 							
-							mul_req_a <= regs[3];
+							mul_req_a <= regs[2];
 							mul_req_b <= regs[7];
 							
 							wait_one <= 1;
@@ -529,24 +509,16 @@ module pipeline_block
 						
 						`BLOCK_STATE_BIQUAD_DF1_MAC_3_MUL_WAIT: begin
 							if (mul_ready) begin
-								
-								summand_a <= regs[9];
-								summand_b <= -mul_result_final;
-								
-								state <= `BLOCK_STATE_BIQUAD_DF1_MAC_3_ADD_WAIT;
+								acc_summand <= -mul_result;
+								state <= `BLOCK_STATE_BIQUAD_DF1_MAC_3_ACCUMULATE;
 							end
 							wait_one <= 0;
 						end
 						
-						`BLOCK_STATE_BIQUAD_DF1_MAC_3_ADD_WAIT: begin
-							state <= `BLOCK_STATE_BIQUAD_DF1_MAC_3_STORE;
-						end
-						
-						
-						`BLOCK_STATE_BIQUAD_DF1_MAC_3_STORE: begin
-							regs[9] <= sum;
+						`BLOCK_STATE_BIQUAD_DF1_MAC_3_ACCUMULATE: begin
+							accumulator <= acc_sum;
 							
-							mul_req_a <= regs[4];
+							mul_req_a <= regs[3];
 							mul_req_b <= regs[8];
 							
 							wait_one <= 1;
@@ -555,27 +527,26 @@ module pipeline_block
 						
 						`BLOCK_STATE_BIQUAD_DF1_MAC_4_MUL_WAIT: begin
 							if (mul_ready) begin
+								acc_summand <= -mul_result;
 								
-								summand_a <= regs[9];
-								summand_b <= -mul_result_final;
-								
-								state <= `BLOCK_STATE_BIQUAD_DF1_MAC_4_ADD_WAIT;
+								state <= `BLOCK_STATE_BIQUAD_DF1_MAC_4_ACCUMULATE;
 							end
 							wait_one <= 0;
 						end
 						
-						`BLOCK_STATE_BIQUAD_DF1_MAC_4_ADD_WAIT: begin
-							state <= `BLOCK_STATE_BIQUAD_DF1_MAC_4_STORE;
+						`BLOCK_STATE_BIQUAD_DF1_MAC_4_ACCUMULATE: begin
+							accumulator <= acc_sum;
+							state <= `BLOCK_STATE_BIQUAD_DF1_STORE;
 						end
 						
-						`BLOCK_STATE_BIQUAD_DF1_MAC_4_STORE: begin
-							unified_write(dest_reg, dest_unified_addr, sum);
+						`BLOCK_STATE_BIQUAD_DF1_STORE: begin
+							write_dest({$signed(acc_q3_29_sat) >>> 14}[data_width - 1 : 0]);
 							
-							regs[6] <= regs[5];
-							regs[5] <= src_a_latched;
+							regs[1] <= regs[0];
+							regs[0] <= src_a_latched;
 							
-							regs[8] <= regs[7];
-							regs[7] <= sum;
+							regs[3] <= regs[2];
+							regs[2] <= {$signed(acc_q3_29_sat) >>> 14}[data_width - 1 : 0];
 							
 							state <= `BLOCK_STATE_DONE;
 							done <= 1;
@@ -586,8 +557,8 @@ module pipeline_block
 				`BLOCK_INSTR_LUT: begin
 					case (state)
 						`BLOCK_STATE_BEGIN: begin
-							lut_arg 	<= ((src_b_val << instr_shift) & ((1 << data_width) - 1)) | ((data_width)'(src_b_val[15]) << data_width);
-							lut_handle 	<= src_a_val[`LUT_HANDLE_WIDTH - 1 : 0];
+							lut_arg 	<= ((src_a_val << instr_shift) & ((1 << data_width) - 1)) | ((data_width)'(src_a_val[15]) << data_width);
+							lut_handle 	<= src_b_val[`LUT_HANDLE_WIDTH - 1 : 0];
 							lut_req 	<= 1;
 							state 		<= `BLOCK_STATE_LUT_WAIT1;
 						end
@@ -684,6 +655,10 @@ module pipeline_block
 						end
 						
 						`BLOCK_STATE_DELAY_READ_WAIT: begin
+							if (delay_buf_invalid_read) begin
+								state <= `BLOCK_STATE_DONE;
+								done <= 1;
+							end
 							if (delay_buf_read_ready) begin
 								mul_req_a <= delay_buf_data_in;
 								mul_req_b <= regs[2];
@@ -729,6 +704,8 @@ module pipeline_block
 		end
 		
 		if (reset) begin
+			instr <= `BLOCK_INSTR_NOP;
+			
 			for (i = 0; i < n_channels; i++) begin
 				ch_regs[i] <= 0;
 			end

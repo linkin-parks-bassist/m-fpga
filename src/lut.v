@@ -11,7 +11,7 @@ module sin_2pi_lut_16
 	reg signed [15:0] sin_lut[0:2047];
 
 	initial begin
-		$readmemh("sin_q15_full.hex", sin_lut);
+		$readmemh("luts/sin_q15_full.hex", sin_lut);
 	end
 	
 	wire [10:0] base_index = x[14:4];
@@ -36,7 +36,7 @@ module tanh_4_lut_16
 	reg signed [15:0] tanh_lut[0:2047];
 
 	initial begin
-		$readmemh("tanh_q15.hex", tanh_lut);
+		$readmemh("luts/tanh_q15.hex", tanh_lut);
 	end
 
 	wire signed [15:0] x_index = x + 16'sh8000;

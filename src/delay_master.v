@@ -49,6 +49,8 @@ module delay_master
 	reg [sram_addr_width - 1 : 0] sram_buffer_addrs [n_sram_buffers - 1 : 0];
 	reg [sram_addr_width - 1 : 0] sram_buffer_sizes [n_sram_buffers - 1 : 0];
 	reg [sram_addr_width - 1 : 0] sram_buffer_posns [n_sram_buffers - 1 : 0];
+	
+	reg [n_sram_buffers - 1 : 0] sram_buffer_wrapped;
 
 	localparam sram_buffer_handle_width = $clog2(n_sram_buffers);
 
@@ -93,7 +95,7 @@ module delay_master
 	
 	wire buffers_exhausted 		= (sram_buffer_next_handle >= (sram_buffer_handle_width)'(n_sram_buffers - 1));
 	wire alloc_req_size_pow2 	= ~|(alloc_size & (alloc_size - 1));
-	wire sram_exhausted			= ((32)'(sram_alloc_addr + alloc_size) >= sram_capacity);
+	wire alloc_too_big			= ((32)'(sram_alloc_addr + alloc_size) >= sram_capacity);
 
 	localparam data_sram_cmp_width = data_width > sram_addr_width ? data_width : sram_addr_width;
 	
@@ -112,10 +114,26 @@ module delay_master
 			write_ready 	<= 1;
 			read_wait_one  	<= 0;
 			write_wait_one 	<= 0;
+			
+			sram_buffer_next_handle <= 0;
+			sram_alloc_addr <= 0;
+			
+			sram_buffer_addrs[0] <= 0;
+			sram_buffer_sizes[0] <= 0;
+			sram_buffer_posns[0] <= 0;
+			
+			req_sram_read_addr <= 0;
+			
+			req_sram_read 	<= 0;
+			req_sram_write 	<= 0;
+			
+			data_out 	<= 0;
+			read_ready  <= 0;
+			write_ready <= 0;
 		end
 		else begin
 			if (alloc_sram_req) begin
-				if (buffers_exhausted || ~alloc_req_size_pow2 || sram_exhausted) begin
+				if (buffers_exhausted || ~alloc_req_size_pow2 || alloc_too_big) begin
 					invalid_alloc <= 1;
 				end
 				else begin

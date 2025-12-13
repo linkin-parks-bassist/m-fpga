@@ -1,5 +1,5 @@
 #include <verilated.h>
-#include "Vpipeline.h"
+#include "Vdsp_engine.h"
 #include "verilated_fst_c.h"
 #include <fstream>
 #include <vector>
@@ -7,6 +7,8 @@
 #include <cstring>
 #include <iostream>
 #include "math.h"
+
+#define DUMP_WAVEFORM
 
 // ---------------- WAV I/O ----------------
 #pragma pack(push, 1)
@@ -71,7 +73,7 @@ static bool write_wav16_mono(const char* path,
 VerilatedFstC* tfp = NULL;
 static uint64_t ticks = 0;
 
-void tick(Vpipeline* dut)
+void tick(Vdsp_engine* dut)
 {
 	assert(dut != NULL);
 	
@@ -142,35 +144,33 @@ int16_t float_to_q15(float x)
 
 #define COMMAND_WRITE_BLOCK_INSTR 	0b10010000
 #define COMMAND_WRITE_BLOCK_REG 	0b11100000
-#define COMMAND_UPDATE_BLOCK_REG 	0b11100001
+#define COMMAND_UPDATE_BLOCK_REG 	0b11101001
 #define COMMAND_ALLOC_SRAM_DELAY 	0b00100000
+#define COMMAND_SWAP_PIPELINES 		0b00000001
+#define COMMAND_RESET_PIPELINE 			0b00001001
 
 
-void send_input_byte(Vpipeline *dut, uint8_t byte)
+void send_input_byte(Vdsp_engine *dut, uint8_t byte)
 {
-	printf("Sending input byte 0b%08b\n", byte);
-	dut->inp_byte = byte;
+	printf("Sending input byte 0b%08b. FIFO count: %d\n", byte, dut->fifo_count);
+	dut->command_in = byte;
 	
-	dut->inp_ready = 0;
-	while (!dut->inp_fifo_read)
-		tick(dut);
-	
-	dut->inp_ready = 1;
+	dut->command_in_ready = 1;
 	
 	tick(dut);
-	dut->inp_ready = 0;
+	dut->command_in_ready = 0;
 	
 	tick(dut);
 }
 
-void wait_for_input_req(Vpipeline *dut)
+void wait_for_input_req(Vdsp_engine *dut)
 {
-	dut->inp_ready = 0;
-	while (!dut->inp_fifo_read)
+	dut->command_in_ready = 0;
+	while (!dut->command_read)
 		tick(dut);
 }
 
-void write_block_instr(Vpipeline* dut, int block, uint32_t instr)
+void write_block_instr(Vdsp_engine* dut, int block, uint32_t instr)
 {
 	printf("Set block %d instruction to %d\n", block, instr);
 	send_input_byte(dut, COMMAND_WRITE_BLOCK_INSTR);
@@ -186,14 +186,14 @@ void write_block_instr(Vpipeline* dut, int block, uint32_t instr)
 	send_input_byte(dut, instr & 0xFFFF);
 }
 
-void send_data_command(Vpipeline *dut, int command, uint16_t data)
+void send_data_command(Vdsp_engine *dut, int command, uint16_t data)
 {
 	send_input_byte(dut, command);
 	send_input_byte(dut, (data >> 8) & 0xFFFF);
 	send_input_byte(dut, data & 0xFFFF);
 }
 
-void write_block_register(Vpipeline* dut, int block, int reg, uint16_t val)
+void write_block_register(Vdsp_engine* dut, int block, int reg, uint16_t val)
 {
 	printf("Write block register: %d.%d <= %.06f\n", block, reg, (float)(val / (float)(1 << 15)));
 	
@@ -213,15 +213,19 @@ void write_block_register(Vpipeline* dut, int block, int reg, uint16_t val)
 	send_input_byte(dut, val & 0xFFFF);
 }
 
-void load_biquad(Vpipeline* dut, int block, float b0, float b1, float b2, float a1, float a2)
+void load_biquad(Vdsp_engine* dut, int block, float b0, float b1, float b2, float a1, float a2)
 {   
-    write_block_instr(dut, block, BLOCK_INSTR(BLOCK_INSTR_BIQ_DF1, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+    write_block_instr(dut, block, BLOCK_INSTR(BLOCK_INSTR_BIQ_DF1, 0, 4, 0, 0, 0, 1, 0, 0, 0));
     
-    write_block_register(dut, block, 0, float_to_q_nminus1(b0, 1));
-    write_block_register(dut, block, 1, float_to_q_nminus1(b1, 1));
-    write_block_register(dut, block, 2, float_to_q_nminus1(b2, 1));
-    write_block_register(dut, block, 3, float_to_q_nminus1(a1, 1));
-    write_block_register(dut, block, 4, float_to_q_nminus1(a2, 1));
+    write_block_register(dut, block, 0, 0);
+    write_block_register(dut, block, 1, 0);
+    write_block_register(dut, block, 2, 0);
+    write_block_register(dut, block, 3, 0);
+    write_block_register(dut, block, 4, float_to_q_nminus1(b0, 1));
+    write_block_register(dut, block, 5, float_to_q_nminus1(b1, 1));
+    write_block_register(dut, block, 6, float_to_q_nminus1(b2, 1));
+    write_block_register(dut, block, 7, float_to_q_nminus1(a1, 1));
+    write_block_register(dut, block, 8, float_to_q_nminus1(a2, 1));
 }
 
 int pow2_ceil(int x)
@@ -232,6 +236,14 @@ int pow2_ceil(int x)
 		y = y << 1;
 	
 	return y;
+}
+
+#define MS_TO_SAMPLES(x) ((int)roundf(((float)x * 48.0f)))
+
+void alloc_sram_delay(Vdsp_engine *dut, int ms)
+{
+	printf("Allocating SRAM delay buffer of size %d\n", pow2_ceil(MS_TO_SAMPLES(ms)));
+	send_data_command(dut, COMMAND_ALLOC_SRAM_DELAY, pow2_ceil(MS_TO_SAMPLES(ms)));
 }
 
 // ---------------- Simulation ----------------
@@ -258,23 +270,23 @@ int main(int argc, char** argv)
     out_samples.reserve(in_samples.size());
 
     // ---------------- Verilator DUT ----------------
-    Vpipeline* dut = new Vpipeline;
+    Vdsp_engine* dut = new Vdsp_engine;
 
 	Verilated::traceEverOn(true);
 	
-	#ifdef DUMP_TRACE
+	#ifdef DUMP_WAVEFORM
 	tfp = new VerilatedFstC;
 	dut->trace(tfp, 99);
-	tfp->open("wave.fst");
+	tfp->open("./verilator/waveform.fst");
 	#endif
 
-    const int TICKS_PER_SAMPLE = 2000;   // <-- change as needed
+    const int TICKS_PER_SAMPLE = 128;   // <-- change as needed
 
     // Reset
     dut->reset = 1;
     dut->clk = 0;
     dut->in_sample = 0;
-    dut->in_valid  = 0;
+    dut->sample_ready  = 0;
 
     tick(dut);
     tick(dut);
@@ -289,7 +301,7 @@ int main(int argc, char** argv)
 	//load_biquad(dut, 0, 1, 0, 0, 0, 0);
 	
 	// 1kHz LPF
-	//load_biquad(dut, 0, (float)0.0039160767, (float)0.0078321534, (float)0.0039160767, (float)-1.8153179157, (float)0.8309822224);
+	load_biquad(dut, 0, (float)0.0039160767, (float)0.0078321534, (float)0.0039160767, (float)-1.8153179157, (float)0.8309822224);
 
 	// 200Hz HPF
 	//load_biquad(dut, 0, (float)0.9816555739f, (float)-1.9633111479f, (float)0.9816555739f, (float)-1.9629747014f, (float)0.9636475944f);
@@ -305,41 +317,54 @@ int main(int argc, char** argv)
 	write_block_register(dut, 0, 0, float_to_q15(0.99f));
 	write_block_register(dut, 0, 1, float_to_q15(0.01f));*/
 
-	#define MS_TO_SAMPLES(x) ((int)roundf(((float)x * 48.0f)))
+	int delay;
 
-	int delay = 254;
+	/*int delay = 254;
 
-	send_data_command(dut, COMMAND_ALLOC_SRAM_DELAY, pow2_ceil(MS_TO_SAMPLES(delay)));
+	alloc_sram_delay(dut, delay);
 	
 	write_block_instr(dut, 0, BLOCK_INSTR(BLOCK_INSTR_DELAY, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 	write_block_register(dut, 0, 1, MS_TO_SAMPLES(delay));
-	write_block_register(dut, 0, 2, float_to_q15(0.4f));
-
+	write_block_register(dut, 0, 2, float_to_q15(0.5f));
+	*/
+	
+	/*
 	delay = 127;
 
-	send_data_command(dut, COMMAND_ALLOC_SRAM_DELAY, pow2_ceil(MS_TO_SAMPLES(delay)));
+	alloc_sram_delay(dut, delay);
 	
 	write_block_instr(dut, 1, BLOCK_INSTR(BLOCK_INSTR_DELAY, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 	write_block_register(dut, 1, 0, 1);
 	write_block_register(dut, 1, 1, MS_TO_SAMPLES(delay));
 	write_block_register(dut, 1, 2, float_to_q15(0.5f));
-	
+	*/
+	//
 	
 	//write_block_instr(dut, 1, BLOCK_INSTR(BLOCK_INSTR_MUL, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 	//write_block_register(dut, 1, 0, float_to_q15(0.5));
+
+
+	//write_block_instr(dut, 0, BLOCK_INSTR(BLOCK_INSTR_MUL, 0, 0, 0, 0, 0, 1, 0, 0, 0));
+	//write_block_register(dut, 0, 0, float_to_q15(0.7f));
+	
+	/*write_block_instr(dut, 1, BLOCK_INSTR(BLOCK_INSTR_LUT, 0, 0, 0, 0, 0, 1, 0, 0, 0));
+	
+	write_block_instr(dut, 2, BLOCK_INSTR(BLOCK_INSTR_MUL, 0, 0, 0, 0, 0, 1, 0, 0, 0));
+	write_block_register(dut, 2, 0, float_to_q15(0.5));*/
+	
+	send_input_byte(dut, COMMAND_SWAP_PIPELINES);
 
     // ---------------- Main loop ----------------
     size_t last_percent = 0;
 
     for (size_t i = 0; i < in_samples.size(); ++i)
     {
-
-        // Feed sample
+		// Feed sample
         dut->in_sample = static_cast<int16_t>(in_samples[i]);
-        dut->in_valid  = 1;
+        dut->sample_ready  = 1;
         
         tick(dut);
-		dut->in_valid  = 0;
+		dut->sample_ready  = 0;
 
         // Tick pipeline for this sample
         for (int t = 0; t < TICKS_PER_SAMPLE; ++t)
@@ -349,8 +374,36 @@ int main(int argc, char** argv)
             if (dut->ready)
 				break;
         }
-
-        dut->in_valid = 0;
+        
+        /*if (i == (1 << 16))
+        {
+			printf("\rSwap pipelines...\n");
+			send_input_byte(dut, COMMAND_SWAP_PIPELINES);
+			send_input_byte(dut, COMMAND_RESET_PIPELINE);
+			printf("Done\n");
+		}
+		
+		if (i == (1 << 16) + (1 << 15))
+		{
+			printf("\rSet up the background pipeline...\n");
+			delay = 127;
+			alloc_sram_delay(dut, delay);
+			
+			write_block_instr(dut, 0, BLOCK_INSTR(BLOCK_INSTR_DELAY, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+			write_block_register(dut, 0, 0, 0);
+			write_block_register(dut, 0, 1, MS_TO_SAMPLES(delay));
+			write_block_register(dut, 0, 2, float_to_q15(0.5f));
+			printf("Done\n");
+		}
+		
+		if (i == (1 << 16) + (1 << 15) + (1 << 14))
+		{
+			printf("\rSwap pipelines...\n");
+			send_input_byte(dut, COMMAND_SWAP_PIPELINES);
+		}*/
+		
+		if (i == (1 << 17))
+			break;
 
         // Capture output
         int16_t y = static_cast<int16_t>(dut->out_sample);
@@ -367,7 +420,7 @@ int main(int argc, char** argv)
 
     std::cout << "\rProgress: " << in_samples.size() << "/" << in_samples.size() << " samples processed (100% done)" << std::endl;
     
-    #ifdef DUMP_TRACE
+    #ifdef DUMP_WAVEFORM
 	tfp->close();
 	delete tfp;
 	#endif
