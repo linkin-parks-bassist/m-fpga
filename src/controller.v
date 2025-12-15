@@ -42,6 +42,9 @@ module control_unit
 	reg [7:0] ret_state;
 	
 	reg [5:0] byte_ctr;
+
+    wire [data_width - 1 + 8 : 0] data_out_in_byte  = {data_out, in_byte};
+    wire [`BLOCK_INSTR_WIDTH - 1 + 8 : 0] instr_out_in_byte = {instr_out, in_byte};
 	
 	reg load_block_number;
 	reg load_reg_number;
@@ -181,7 +184,7 @@ module control_unit
 						wait_one <= 0;
 					end
 					else if (in_ready) begin
-						data_out <= {data_out, in_byte}[data_width - 1 : 0];
+						data_out <= data_out_in_byte[data_width - 1 : 0];
 						next <= 1;
 						
 						if (byte_ctr >= (data_width / 8) - 1) begin
@@ -204,7 +207,7 @@ module control_unit
 						wait_one <= 0;
 					end
 					else if (in_ready) begin
-						instr_out  <= {instr_out, in_byte}[`BLOCK_INSTR_WIDTH - 1 : 0];
+						instr_out  <= instr_out_in_byte[`BLOCK_INSTR_WIDTH - 1 : 0];
 						next <= 1;
 						
 						if (byte_ctr >= (`BLOCK_INSTR_WIDTH / 8) - 1) begin

@@ -102,7 +102,7 @@ endmodule
 // CAPTURE_CHANNEL = 0 -> capture when lrclk == 0 (left)
 // CAPTURE_CHANNEL = 1 -> capture when lrclk == 1 (right)
 module i2s_rx_mono #(
-    parameter integer WORD_WIDTH      = 24,
+    parameter integer data_width      = 24,
     parameter         CAPTURE_CHANNEL = 1'b0,
     parameter integer BIT_OFFSET      = 1    // first valid data bit index
 )(
@@ -110,23 +110,23 @@ module i2s_rx_mono #(
     input  wire rst,
     input  wire lrclk,
     input  wire sdata,
-    output reg  signed [WORD_WIDTH-1:0] sample,
+    output reg  signed [data_width-1:0] sample,
     output reg                   sample_valid
 );
 
     // Derived constants (compile-time)
-    localparam integer BIT_LAST = BIT_OFFSET + WORD_WIDTH - 1;
+    localparam integer BIT_LAST = BIT_OFFSET + data_width - 1;
 
     reg lrclk_d = 1'b0;
     reg [5:0] bit_cnt = 6'd0;
-    reg signed [WORD_WIDTH-1:0] shift_reg = {WORD_WIDTH{1'b0}};
+    reg signed [data_width-1:0] shift_reg = {data_width{1'b0}};
 
     always @(posedge bclk or posedge rst) begin
         if (rst) begin
             lrclk_d      <= 1'b0;
             bit_cnt      <= 6'd0;
-            shift_reg    <= {WORD_WIDTH{1'b0}};
-            sample       <= {WORD_WIDTH{1'b0}};
+            shift_reg    <= {data_width{1'b0}};
+            sample       <= {data_width{1'b0}};
             sample_valid <= 1'b0;
         end else begin
             lrclk_d      <= lrclk;
@@ -144,10 +144,10 @@ module i2s_rx_mono #(
                 if (bit_cnt >= BIT_OFFSET &&
                     bit_cnt <= BIT_LAST) begin
 
-                    shift_reg <= {shift_reg[WORD_WIDTH-2:0], sdata};
+                    shift_reg <= {shift_reg[data_width-2:0], sdata};
 
                     if (bit_cnt == BIT_LAST) begin
-                        sample       <= {shift_reg[WORD_WIDTH-2:0], sdata};
+                        sample       <= {shift_reg[data_width-2:0], sdata};
                         sample_valid <= 1'b1;
                     end
                 end
@@ -156,79 +156,6 @@ module i2s_rx_mono #(
     end
 
 endmodule
-
-// INMP441 I2S RX, mono, literal to datasheet timing.
-//
-// Assumptions:
-// - BCLK (SCK) is the same clock the INMP441 sees on its SCK pin.
-// - WS (lrclk) is the same as the INMP441 WS pin.
-// - L/R pin on the mic is strapped:
-//     L/R = 0 -> mic drives LEFT half-frame  (WS = "left")
-//     L/R = 1 -> mic drives RIGHT half-frame (WS = "right")
-// - We treat WS = 0 as "left" and WS = 1 as "right" (standard I2S).
-// - We reset bit_cnt at each WS transition and then count SCK edges.
-//
-// According to the datasheet, for the active channel:
-//   - SD is high-Z at SCK count 0 (just after WS edge).
-//   - MSB is valid starting at SCK count 1.
-//   - 24 bits total: counts 1..24.
-//   - After that, SD goes high-Z again.
-
-module inmp441_rx_mono #(
-    parameter integer WORD_WIDTH      = 24,
-    parameter         CAPTURE_CHANNEL = 1'b0  // 0 = capture when WS==0, 1 = WS==1
-)(
-    input  wire                        bclk,         // SCK
-    input  wire                        rst,          // async reset, active high
-    input  wire                        lrclk,        // WS
-    input  wire                        sdata,        // SD from INMP441
-    output reg  signed [WORD_WIDTH-1:0] sample,      // captured 24-bit sample
-    output reg                         sample_valid  // 1-cycle pulse (bclk domain)
-);
-
-    reg       lrclk_d   = 1'b0;     // delayed WS for edge detect
-    reg [5:0] bit_cnt   = 6'd0;     // 0..31 within half-frame
-    reg signed [WORD_WIDTH-1:0] shift_reg = {WORD_WIDTH{1'b0}};
-
-    always @(negedge bclk or posedge rst) begin
-        if (rst) begin
-            lrclk_d      <= 1'b0;
-            bit_cnt      <= 6'd0;
-            shift_reg    <= {WORD_WIDTH{1'b0}};
-            sample       <= {WORD_WIDTH{1'b0}};
-            sample_valid <= 1'b0;
-        end else begin
-            lrclk_d      <= lrclk;
-            sample_valid <= 1'b0;
-
-            // New half-frame starts at any WS edge
-            if (lrclk_d != lrclk) begin
-                bit_cnt   <= 6'd0;
-                shift_reg <= {WORD_WIDTH{1'b0}};
-            end else begin
-                if (bit_cnt < 6'd31)
-                    bit_cnt <= bit_cnt + 6'd1;
-            end
-
-            // Capture only on the chosen channel half
-            if (lrclk == CAPTURE_CHANNEL) begin
-                // Datasheet: MSB is valid at the first SCK after WS edge.
-                // With bit_cnt reset at WS edge and incremented on each BCLK,
-                // MSB is at bit_cnt == 1, LSB at bit_cnt == 24.
-                if (bit_cnt >= 6'd1 && bit_cnt <= 6'd24) begin
-                    shift_reg <= {shift_reg[WORD_WIDTH-2:0], sdata};
-
-                    if (bit_cnt == 6'd24) begin
-                        sample       <= {shift_reg[WORD_WIDTH-2:0], sdata};
-                        sample_valid <= 1'b1;
-                    end
-                end
-            end
-        end
-    end
-
-endmodule
-
 
 
 // I2S transmitter (mono -> stereo).
@@ -238,26 +165,26 @@ endmodule
 // 'sample_in' is held stable in the BCLK domain.
 // Typically you update 'sample_in' whenever you see sample_valid from i2s_rx_mono.
 module i2s_tx_mono_stereo #(
-    parameter integer WORD_WIDTH = 24
+    parameter integer data_width = 24
 )(
     input  wire bclk,                 // bit clock
     input  wire rst,                  // reset in bclk domain (active high)
     input  wire lrclk,                // word-select (from i2s_lrclk_gen)
-    input  wire signed [WORD_WIDTH-1:0] sample_in,  // mono sample to output
+    input  wire signed [data_width-1:0] sample_in,  // mono sample to output
     output reg  sdata                 // serial data to PCM5102 (DIN)
 );
 
     reg lrclk_d = 1'b0;
     reg [5:0] bit_cnt = 6'd0;         // 0..31 within each half-frame
-    reg signed [WORD_WIDTH-1:0] shift_reg = {WORD_WIDTH{1'b0}};
-    reg signed [WORD_WIDTH-1:0] latched_sample = {WORD_WIDTH{1'b0}};
+    reg signed [data_width-1:0] shift_reg = {data_width{1'b0}};
+    reg signed [data_width-1:0] latched_sample = {data_width{1'b0}};
 
     always @(posedge bclk or posedge rst) begin
         if (rst) begin
             lrclk_d        <= 1'b0;
             bit_cnt        <= 6'd0;
-            shift_reg      <= {WORD_WIDTH{1'b0}};
-            latched_sample <= {WORD_WIDTH{1'b0}};
+            shift_reg      <= {data_width{1'b0}};
+            latched_sample <= {data_width{1'b0}};
             sdata          <= 1'b0;
         end else begin
             lrclk_d <= lrclk;
@@ -275,12 +202,12 @@ module i2s_tx_mono_stereo #(
                 if (bit_cnt < 6'd31)
                     bit_cnt <= bit_cnt + 6'd1;
 
-                // I2S: output MSB starting at bit_cnt == 1, for WORD_WIDTH bits.
-                if (bit_cnt >= 6'd1 && bit_cnt <= WORD_WIDTH[5:0]) begin
-                    sdata     <= shift_reg[WORD_WIDTH-1];
-                    shift_reg <= {shift_reg[WORD_WIDTH-2:0], 1'b0};
+                // I2S: output MSB starting at bit_cnt == 1, for data_width bits.
+                if (bit_cnt >= 6'd1 && bit_cnt <= data_width[5:0]) begin
+                    sdata     <= shift_reg[data_width-1];
+                    shift_reg <= {shift_reg[data_width-2:0], 1'b0};
                 end else begin
-                    // After WORD_WIDTH bits, pad with zeros until end of half-frame.
+                    // After data_width bits, pad with zeros until end of half-frame.
                     sdata <= 1'b0;
                 end
             end

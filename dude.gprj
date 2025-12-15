@@ -1,0 +1,28 @@
+<?xml version="1" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW2AR-18C" pn="GW2AR-LV18QN88PC8/I7">gw2ar18c-011</Device>
+    <FileList>
+        <File path="include/block.vh" type="file.verilog" enable="1"/>
+        <File path="include/controller.vh" type="file.verilog" enable="1"/>
+        <File path="include/lut.vh" type="file.verilog" enable="1"/>
+        <File path="src/block.v" type="file.verilog" enable="1"/>
+        <File path="src/controller.v" type="file.verilog" enable="1"/>
+        <File path="src/delay_master.v" type="file.verilog" enable="1"/>
+        <File path="src/fifo.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_rpll/gowin_rpll.v" type="file.verilog" enable="1"/>
+        <File path="src/i2s.v" type="file.verilog" enable="1"/>
+        <File path="src/lut.v" type="file.verilog" enable="1"/>
+        <File path="src/lut_master.v" type="file.verilog" enable="1"/>
+        <File path="src/mixer.v" type="file.verilog" enable="1"/>
+        <File path="src/pipeline.v" type="file.verilog" enable="1"/>
+        <File path="src/rr_arbiter.v" type="file.verilog" enable="1"/>
+        <File path="src/spi.v" type="file.verilog" enable="1"/>
+        <File path="src/sram.v" type="file.verilog" enable="1"/>
+        <File path="src/top.v" type="file.verilog" enable="1"/>
+        <File path="dude.cst" type="file.cst" enable="1"/>
+        <File path="dude.sdc" type="file.sdc" enable="1"/>
+    </FileList>
+</Project>

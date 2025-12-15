@@ -17,8 +17,8 @@ module fifo_buffer #(parameter data_width = 8, parameter n = 16)
 
 	// Force the bank size to be a power of 2; induces division
 	// by 0 error at compile time if this is not the case.
-	localparam int unsigned _IS_POW2 = 32'((n & (n - 1)) == 0);
-	localparam int _FORCE_POW2 = 1 / _IS_POW2;
+	localparam integer _IS_POW2 = ((n & (n - 1)) == 0);
+	localparam integer _FORCE_POW2 = 1 / _IS_POW2;
 
 	localparam index_width = $clog2(n);
 

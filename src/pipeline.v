@@ -7,26 +7,48 @@
 
 module distributed_multiplier
 	#(
-		parameter width = 18,
+		parameter data_width = 18,
 		parameter n_blocks = 32
 	)
 	(
 		input wire clk,
 		input wire reset,
 		
-		input wire signed [width - 1:0] x [0 : n_blocks - 1],
-		input wire signed [width - 1:0] y [0 : n_blocks - 1],
+		input wire signed [n_blocks * data_width - 1 : 0] x_flat,
+		input wire signed [n_blocks * data_width - 1 : 0] y_flat,
 		
-		output reg signed [2 * width - 1 : 0] prod,
+		output reg signed [2 * data_width - 1 : 0] prod,
 		
 		output reg  [n_blocks - 1 : 0] done
 	);
 	
 	localparam index_width = $clog2(n_blocks);
-	localparam [index_width - 1 : 0] initial_index = index_width'(n_blocks - 1);
+	localparam [index_width - 1 : 0] initial_index = (n_blocks - 1);
+
+    reg [index_width - 1 : 0] index = initial_index;
 	
-	reg [index_width - 1 : 0] index = initial_index;
-	
+	reg signed [data_width-1:0] x;
+
+    integer k;
+    always @* begin
+        x = 0;
+        for (k = 0; k < n_blocks; k = k + 1) begin
+            if (index == k)
+                x = x_flat[k * data_width +: data_width];
+        end
+    end
+
+    reg signed [data_width-1:0] y;
+
+    always @* begin
+        y = 0;
+        for (k = 0; k < n_blocks; k = k + 1) begin
+            if (index == k)
+                y = y_flat[k * data_width +: data_width];
+        end
+    end
+
+
 	integer i;
 	always @(posedge clk) begin
 		if (reset) begin
@@ -39,9 +61,9 @@ module distributed_multiplier
 			prod <= 0;
 		end
 		else begin
-			prod <= x[index] * y[index];
+			prod <= x * y;
 			
-			done <= '0;
+			done <= 0;
 			done[index] <= 1;
 			
 			if (index == 0) begin
@@ -137,30 +159,40 @@ module pipeline
 		end
 	end
 	
-	wire [data_width - 1 : 0] bus [0 : n_blocks][0 : n_channels - 1];
-	wire [n_blocks - 1 : 0] dones;
+    function automatic integer row_base(input integer row);
+        row_base = row * n_channels * data_width;
+    endfunction
+
+    function automatic integer cell_base(input integer row, input integer ch);
+        cell_base = row * n_channels * data_width + ch * data_width;
+    endfunction
+
+	wire [(n_blocks + 1) * n_channels * data_width - 1 : 0] bus_flat;
 
 	genvar c;
     generate
-        for (c = 0; c < n_channels; c = c + 1) begin
-            assign bus[0][c] = (c == 0) ? in_sample : '0;
+        for (c = 0; c < n_channels; c = c + 1) begin : HHH
+            assign bus_flat[cell_base(0, c) +: data_width] =
+                (c == 0) ? in_sample : {data_width{1'b0}};
         end
     endgenerate
+
+    assign out_sample = bus_flat[cell_base(n_blocks, 0) +: data_width];
     
-    assign out_sample = bus[n_blocks][0];
-    
-    wire [data_width 		- 1 : 0] mul_bus_x [0 : n_blocks - 1];
-    wire [data_width 		- 1 : 0] mul_bus_y [0 : n_blocks - 1];
+	wire [n_blocks - 1 : 0] dones;
+
+    wire [n_blocks * data_width - 1 : 0] mul_bus_x;
+    wire [n_blocks * data_width - 1 : 0] mul_bus_y;
     wire [2 * data_width 	- 1 : 0] mul_result;
     wire [n_blocks 			- 1 : 0] mul_done;
-    
-    distributed_multiplier #(.width(data_width), .n_blocks(n_blocks)) mul
+
+    distributed_multiplier #(.data_width(data_width), .n_blocks(n_blocks)) mul
 		(
 			.clk(clk),
 			.reset(reset),
 			
-			.x(mul_bus_x),
-			.y(mul_bus_y),
+			.x_flat(mul_bus_x),
+			.y_flat(mul_bus_y),
 			
 			.prod(mul_result),
 			
@@ -175,15 +207,15 @@ module pipeline
                 .data_width(data_width),
                 .n_channels(n_channels)
             ) block_inst (
-                .clk   (clk),
+                .clk(clk),
                 .tick(in_valid),
                 .reset(reset),
                 
-                .ch_in (bus[i]),
-                .ch_out(bus[i+1]),
+                .ch_in_flat (bus_flat[row_base(i)     +: n_channels * data_width]),
+                .ch_out_flat(bus_flat[row_base(i + 1) +: n_channels * data_width]),
                 
-                .mul_req_a(mul_bus_x[i]),
-                .mul_req_b(mul_bus_y[i]),
+                .mul_req_a(mul_bus_x[(i + 1) * data_width - 1 : i * data_width]),
+                .mul_req_b(mul_bus_y[(i + 1) * data_width - 1 : i * data_width]),
                 
                 .mul_result(mul_result),
                 .mul_done(mul_done[i]),
@@ -197,15 +229,15 @@ module pipeline
                 .reg_update(reg_update & (i == block_target)),
                 
                 .lut_req(block_lut_reqs[i]),
-				.lut_handle(block_lut_req_handle[i]),
-				.lut_arg(block_lut_req_arg[i]),
+				.lut_handle(block_lut_req_handle[i * `LUT_HANDLE_WIDTH +: `LUT_HANDLE_WIDTH]),
+				.lut_arg(block_lut_req_arg[i * data_width +: data_width]),
 				.lut_data(lut_data),
 				.lut_ready(lut_readies[i]),
                 
                 .delay_read_req(delay_read_reqs[i]),
 				.delay_write_req(delay_write_reqs[i]),
-				.delay_buf_handle(delay_req_handles[i]),
-				.delay_buf_data_out(delay_req_args[i]),
+				.delay_buf_handle(delay_req_handles[i * data_width +: data_width]),
+				.delay_buf_data_out(delay_req_args[i * data_width +: data_width]),
 				.delay_buf_data_in(delay_data),
 				.delay_buf_read_ready(delay_read_readies[i]),
 				.delay_buf_write_ready(delay_write_readies[i]),
@@ -219,8 +251,8 @@ module pipeline
 	endgenerate
 	
 	wire [n_blocks - 1 : 0] block_lut_reqs;
-	wire [`LUT_HANDLE_WIDTH - 1 : 0] block_lut_req_handle [n_blocks - 1 : 0];
-	wire [data_width - 1 : 0] block_lut_req_arg  [n_blocks - 1 : 0];
+	wire [n_blocks * `LUT_HANDLE_WIDTH - 1 : 0] block_lut_req_handle;
+	wire [n_blocks * data_width - 1 : 0] block_lut_req_arg;
 	wire [data_width - 1 : 0] lut_data;
 	wire [n_blocks - 1 : 0] lut_readies;
 	
@@ -239,8 +271,8 @@ module pipeline
 			.clk(clk),
 			.reset(reset),
 			
-			.req_data(block_lut_req_arg),
-			.req_handles(block_lut_req_handle),
+			.req_data_flat(block_lut_req_arg),
+			.req_handles_flat(block_lut_req_handle),
 			.reqs(block_lut_reqs),
 			
 			.data_out(lut_data),
@@ -314,8 +346,8 @@ module pipeline
 	
 	wire [n_blocks   - 1 : 0] delay_read_reqs;
 	wire [n_blocks   - 1 : 0] delay_write_reqs;
-	wire [data_width - 1 : 0] delay_req_handles 	[n_blocks - 1 : 0];
-	wire [data_width - 1 : 0] delay_req_args  		[n_blocks - 1 : 0];
+	wire [n_blocks * data_width - 1 : 0] delay_req_handles;
+	wire [n_blocks * data_width - 1 : 0] delay_req_args;
 	wire [data_width - 1 : 0] delay_data;
 	wire [data_width - 1 : 0] delay_write_data;
 	wire [n_blocks   - 1 : 0] delay_read_readies;
@@ -401,8 +433,8 @@ module pipeline
 			.clk(clk),
 			.reset(reset),
 			
-			.req_data(delay_req_args),
-			.req_handles(delay_req_handles),
+			.req_data_flat(delay_req_args),
+			.req_handles_flat(delay_req_handles),
 			.reqs(delay_read_reqs),
 			
 			.data_out(delay_data),
@@ -422,8 +454,8 @@ module pipeline
 			.clk(clk),
 			.reset(reset),
 			
-			.req_data(delay_req_args),
-			.req_handles(delay_req_handles),
+			.req_data_flat(delay_req_args),
+			.req_handles_flat(delay_req_handles),
 			.reqs(delay_write_reqs),
 			
 			.data_out(delay_write_data),

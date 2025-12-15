@@ -24,7 +24,6 @@ module dsp_engine
         
         input  wire [7:0] command_in,
         input  wire command_in_ready,
-        output wire command_read,
         output wire invalid_command,
         
         output reg ready,
@@ -34,7 +33,7 @@ module dsp_engine
     
 	reg  signed [data_width - 1 : 0]  in_sample_latched;
 	wire signed [data_width - 1 : 0]  in_sample_amped;
-    reg  signed [data_width - 1 : 0] out_samples [1:0];
+    wire signed [data_width - 1 : 0] out_samples [1:0];
     wire signed [data_width - 1 : 0] out_sample_mixed;
     
     wire in_valid;
@@ -64,6 +63,26 @@ module dsp_engine
     wire pipeline_b_alloc_sram_delay 	= alloc_sram_delay [~current_pipeline];
     
     reg pipeline_tick = 0;
+
+    wire [$clog2(n_blocks) 	    - 1 : 0] block_target;
+	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target;
+	
+	wire [data_width 		 - 1 : 0] ctrl_data_out;
+	wire [`BLOCK_INSTR_WIDTH - 1 : 0] ctrl_instr_out;
+	
+	wire swap_pipelines;
+	wire [1:0] reset_pipeline;
+	wire controller_ready;
+	
+	reg ctrl_inp_ready = 0;
+	wire ctrl_inp_req;
+	wire ctrl_inp_ack;
+
+    wire [7:0] command_byte;
+	wire inp_fifo_nonempty;
+	wire inp_fifo_full;
+	
+	wire inp_fifo_next;
     
     pipeline
 		#(
@@ -133,11 +152,7 @@ module dsp_engine
 			.alloc_sram_delay(pipeline_b_alloc_sram_delay)
 		);
 	
-	wire [7:0] command_byte;
-	wire inp_fifo_nonempty;
-	wire inp_fifo_full;
 	
-	wire inp_fifo_next;
 	
 	fifo_buffer #(.data_width(8), .n(spi_fifo_length)) spi_fifo
 		(
@@ -156,19 +171,7 @@ module dsp_engine
 			.count(fifo_count)
 		);
 	
-	wire [$clog2(n_blocks) 	    - 1 : 0] block_target;
-	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target;
 	
-	wire [data_width 		 - 1 : 0] ctrl_data_out;
-	wire [`BLOCK_INSTR_WIDTH - 1 : 0] ctrl_instr_out;
-	
-	wire swap_pipelines;
-	wire [1:0] reset_pipeline;
-	wire controller_ready;
-	
-	reg ctrl_inp_ready = 0;
-	wire ctrl_inp_req;
-	wire ctrl_inp_ack;
     
     control_unit #(.n_blocks(n_blocks), .data_width(data_width), .n_block_registers(n_block_registers)) controller
 		(
@@ -290,16 +293,16 @@ endmodule
 
 module top
 	#(
-		parameter n_blocks 			= 2,
-		parameter n_block_registers = 16,
+		parameter n_blocks 			= 3,
+		parameter n_block_registers = 4,
+		parameter n_channels 		= 4,
 		parameter data_width 		= 16,
-		parameter n_channels 		= 16,
 		parameter n_sram_banks 		= 8,
 		parameter sram_bank_size 	= 1024,
 		parameter spi_fifo_length	= 32
 	)
     (
-        input wire clk,
+        input wire crystal,
         input wire reset,
 
         input  wire cs,
@@ -322,25 +325,69 @@ module top
         output wire i2s_dout
     );
     
-    reg signed [data_width - 1 : 0]  in_sample = 0;
-    reg signed [data_width - 1 : 0] out_sample = 0;
+    wire clk;
+    wire pll_lock;
+
+    Gowin_rPLL your_instance_name(
+        .clkout(clk), //output clkout
+        .lock(pll_lock), //output lock
+        .clkin(crystal) //input clkin
+    );
+
+    wire signed [15 : 0]  in_sample_16 = in_sample_24[23:8];
+    wire signed [15 : 0] out_sample_16;
+
+    wire signed [23 : 0]  in_sample_24;
+    wire signed [23 : 0] out_sample_24 = in_sample_24;//{out_sample_16, 8'b0};
 	
-	wire [7:0] spi_fifo_out;
-	reg  [7:0] spi_fifo_out_latched;
-	reg  	   spi_fifo_out_ready = 0;
-	
-	wire spi_fifo_nonempty;
-	wire spi_fifo_full;
-	
-	reg spi_fifo_read;
+	i2s_clock_gen #(.data_width(data_width)) i2s_clocks (
+            .clk(clk),
+            .reset(reset),
+
+            .mclk(mclk),
+            .bclk(bclk),
+            .lrclk(lrclk)
+        );
 	
 	
     wire [7:0] spi_in;
     wire spi_in_valid;
+        
+    wire in_sample_ready;
+    wire invalid_command;
+    wire engine_ready;
+    
+    wire [$clog2(spi_fifo_length) : 0] fifo_count;
+
+    dsp_engine #(
+            .n_blocks(n_blocks), 
+            .n_block_registers(n_block_registers),
+            .data_width(data_width),
+            .n_channels(n_channels),
+            .n_sram_banks(n_sram_banks),
+            .sram_bank_size(sram_bank_size),
+            .spi_fifo_length(spi_fifo_length)
+        ) engine (
+            .clk(0),
+            .reset(reset),
+
+            .in_sample(in_sample_16),
+            .out_sample(out_sample_16),
+        
+            .sample_ready(in_sample_ready && !lrclk),
+        
+            .command_in(spi_in),
+            .command_in_ready(spi_in_valid),
+            .invalid_command(invalid_command),
+        
+            .ready(engine_ready),
+        
+            .fifo_count(fifo_count)
+        );
 
     sync_spi_slave spi
         (
-            .clk(master_clk),
+            .clk(clk),
             .reset(reset),
 
             .sck(sck),
@@ -353,5 +400,22 @@ module top
 
             .mosi_byte(spi_in),
             .data_ready(spi_in_valid)
+        );
+    
+    i2s_rx_mono #(.data_width(24)) i2s_in (
+        .bclk(bclk),
+        .rst(reset),
+        .lrclk(lrclk),
+        .sdata(i2s_din),
+        .sample(in_sample_24),
+        .sample_valid(in_sample_ready)
+    );
+
+    i2s_tx_mono_stereo #(.data_width(24)) i2s_out (
+            .bclk(bclk),                 // bit clock
+            .rst(reset),                  // reset in bclk domain (active high)
+            .lrclk(lrclk),                // word-select (from i2s_lrclk_gen)
+            .sample_in(out_sample_24),  // mono sample to output
+            .sdata(i2s_dout)
         );
 endmodule

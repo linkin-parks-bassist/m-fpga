@@ -93,14 +93,14 @@ module delay_master
 	reg  read_wait_one = 0;
 	reg write_wait_one = 0;
 	
-	wire buffers_exhausted 		= (sram_buffer_next_handle >= (sram_buffer_handle_width)'(n_sram_buffers - 1));
+	wire buffers_exhausted 		= (sram_buffer_next_handle >= (n_sram_buffers - 1));
 	wire alloc_req_size_pow2 	= ~|(alloc_size & (alloc_size - 1));
-	wire alloc_too_big			= ((32)'(sram_alloc_addr + alloc_size) >= sram_capacity);
+	wire alloc_too_big			= ((sram_alloc_addr + alloc_size) >= sram_capacity);
 
 	localparam data_sram_cmp_width = data_width > sram_addr_width ? data_width : sram_addr_width;
 	
-	wire [data_sram_cmp_width - 1 : 0] read_req_arg_ext 	= (data_sram_cmp_width)'(read_req_arg);
-	wire [data_sram_cmp_width - 1 : 0] read_buffer_size_ext = (data_sram_cmp_width)'(sram_buffer_sizes[trunc_read_handle]);
+	wire [data_sram_cmp_width - 1 : 0] read_req_arg_ext 	= read_req_arg;
+	wire [data_sram_cmp_width - 1 : 0] read_buffer_size_ext = sram_buffer_sizes[trunc_read_handle];
 
 
 	always @(posedge clk) begin

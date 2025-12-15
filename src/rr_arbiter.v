@@ -54,7 +54,7 @@ module rr_arbiter
 						wait_one <= 1;
 					end
 					else begin
-						if (client == (client_id_width)'(n_clients - 1)) begin
+						if (client == (n_clients - 1)) begin
 							client <= 0;
 						end
 						else begin
@@ -72,7 +72,7 @@ module rr_arbiter
 						
 						state <= `RR_ARBITER_STATE_READY;
 						
-						if (client == (client_id_width)'(n_clients - 1)) begin
+						if (client == (n_clients - 1)) begin
 							client <= 0;
 						end
 						else begin
@@ -98,8 +98,8 @@ module rr_arbiter_handle
 		input wire clk,
 		input wire reset,
 		
-		input wire [req_data_width - 1 : 0] req_data 	[n_clients - 1 : 0],
-		input wire [handle_width   - 1 : 0] req_handles	[n_clients - 1 : 0],
+		input wire [n_clients * req_data_width - 1 : 0] req_data_flat,
+		input wire [n_clients * handle_width   - 1 : 0] req_handles_flat,
 		input wire [n_clients  	   - 1 : 0] reqs,
 		
 		output reg [server_data_width - 1 : 0] data_out,
@@ -113,6 +113,21 @@ module rr_arbiter_handle
 		input wire server_ready
 	);
 
+    wire [req_data_width-1:0] req_data     [0:n_clients-1];
+    wire [handle_width-1:0]   req_handles  [0:n_clients-1];
+
+    genvar i;
+    generate
+        for (i = 0; i < n_clients; i = i + 1) begin : UNFLATTEN
+            assign req_data[i] =
+                req_data_flat[i * req_data_width +: req_data_width];
+
+            assign req_handles[i] =
+                req_handles_flat[i * handle_width +: handle_width];
+        end
+    endgenerate
+
+
 	localparam client_id_width = $clog2(n_clients);
 	
 	reg [client_id_width 	- 1 : 0] client = 0;
@@ -121,7 +136,6 @@ module rr_arbiter_handle
 
 	reg wait_one = 0;
 
-	integer i;
 	always @(posedge clk) begin
 		arbiter_req <= 0;
 		
@@ -143,7 +157,7 @@ module rr_arbiter_handle
 						wait_one <= 1;
 					end
 					else begin
-						if (client == (client_id_width)'(n_clients - 1)) begin
+						if (client == (n_clients - 1)) begin
 							client <= 0;
 						end
 						else begin
@@ -161,7 +175,7 @@ module rr_arbiter_handle
 						
 						state <= `RR_ARBITER_STATE_READY;
 						
-						if (client == (client_id_width)'(n_clients - 1)) begin
+						if (client == (n_clients - 1)) begin
 							client <= 0;
 						end
 						else begin
