@@ -1,65 +1,3 @@
-module i2s_clock_gen #(parameter data_width = 16, parameter mclk_div = 5, parameter bclk_div = 2) (
-		input wire clk,
-		input wire reset,
-		
-		output reg mclk,
-		output reg bclk,
-		output reg lrclk
-	);
-
-	localparam  mclk_count_width = $clog2(mclk_div);
-	localparam  bclk_count_width = $clog2(bclk_div);
-	localparam lrclk_count_width = $clog2(4 * data_width);
-
-	reg [ mclk_count_width - 1 : 0]  mclk_ctr = 0;
-	reg [ bclk_count_width - 1 : 0]  bclk_ctr = 0;
-	reg [lrclk_count_width - 1 : 0] lrclk_ctr = 0;
-	
-	localparam [lrclk_count_width - 1 : 0] lrclk_count_max  = 4 * data_width - 1;
-	localparam [lrclk_count_width - 1 : 0] lrclk_count_half = 2 * data_width - 1;
-	
-	always @(posedge clk or posedge reset) begin
-		if (reset) begin
-			mclk_ctr  <= 0;
-			bclk_ctr  <= 0;
-			lrclk_ctr <= 0;
-			
-			mclk  <= 0;
-			bclk  <= 0;
-			lrclk <= 0;
-		end
-		else begin
-			if (mclk_ctr == mclk_div - 1) begin
-				mclk <= ~mclk;
-				mclk_ctr <= 0;
-				
-				if (bclk_ctr == bclk_div - 1) begin
-					bclk <= ~bclk;
-					bclk_ctr <= 0;
-					
-					if (lrclk_ctr == lrclk_count_max) begin
-						lrclk <= 0;
-						lrclk_ctr <= 0;
-					end
-					else begin
-						if (lrclk_ctr == lrclk_count_half)
-							lrclk <= 1;
-						
-						lrclk_ctr <= lrclk_ctr + 1;
-					end
-				end
-				else begin
-					bclk_ctr <= bclk_ctr + 1;
-				end
-			end
-			else begin
-				mclk_ctr <= mclk_ctr + 1;
-			end
-		end
-	end
-endmodule
-	
-
 // Generates LRCLK (word select) from BCLK.
 // 64 BCLK edges per LRCLK full period -> 32 BCLK per channel.
 // I2S timing: LRCLK edge marks start of half-frame, data MSB appears 1 BCLK later.
@@ -156,6 +94,77 @@ module i2s_rx_mono #(
     end
 
 endmodule
+
+module i2s_24bit_tx (
+    input  wire        clk_122m88,
+    input  wire        reset,
+
+    input  wire [23:0] sample_l,
+    input  wire [23:0] sample_r,
+
+    output reg         bclk,
+    output reg         lrclk,
+    output reg         dout
+);
+
+    // ------------------------------------------------------------
+    // BCLK generation: 122.88 MHz / 40 = 3.072 MHz
+    // ------------------------------------------------------------
+    reg [4:0] bclk_div = 0;
+
+    always @(posedge clk_122m88) begin
+        if (reset) begin
+            bclk_div <= 0;
+            bclk     <= 0;
+        end else begin
+            if (bclk_div == 19) begin
+                bclk_div <= 0;
+                bclk     <= ~bclk;
+            end else begin
+                bclk_div <= bclk_div + 1;
+            end
+        end
+    end
+
+    // ------------------------------------------------------------
+    // I²S state (driven ONLY by BCLK)
+    // ------------------------------------------------------------
+    reg [5:0]  bit_cnt = 0;     // 0..63
+    reg [31:0] shift_reg = 0;
+
+    always @(negedge bclk) begin
+        if (reset) begin
+            bit_cnt   <= 0;
+            lrclk     <= 0;
+            shift_reg <= 0;
+            dout      <= 0;
+        end else begin
+            // Advance bit counter
+            bit_cnt <= bit_cnt + 1;
+
+            // LRCLK toggles one BCLK BEFORE new word
+            if (bit_cnt == 31)
+                lrclk <= 1;   // switch to right
+            else if (bit_cnt == 63)
+                lrclk <= 0;   // switch to left
+
+            // Load new word one cycle AFTER LRCLK edge
+            if (bit_cnt == 32) begin
+                shift_reg <= {sample_r, 8'b0};
+            end else if (bit_cnt == 0) begin
+                shift_reg <= {sample_l, 8'b0};
+            end else begin
+                shift_reg <= {shift_reg[30:0], 1'b0};
+            end
+
+            // Drive data (MSB first)
+            dout <= shift_reg[31];
+        end
+    end
+
+endmodule
+
+
 
 
 // I2S transmitter (mono -> stereo).

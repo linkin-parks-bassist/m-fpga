@@ -317,9 +317,9 @@ module top
         output wire led4,
         output wire led5,
 
-        output wire mclk,
-        output wire bclk,
-        output wire lrclk,
+        output wire mclk_out,
+        output wire bclk_out,
+        output wire lrclk_out,
         
         input  wire i2s_din,
         output wire i2s_dout
@@ -334,21 +334,31 @@ module top
         .clkin(crystal) //input clkin
     );
 
+    assign led0 = ~bclk;
+    assign led1 = ~lrclk;
+    assign led2 = ~i2s_dout;
+    assign led3 = ~sample_in[0];
+    assign led4 = ~sample_in[8];
+    assign led5 = ~|sample_in;
+
+    assign mclk_out  = mclk;
+    assign bclk_out  = bclk;
+    assign lrclk_out = lrclk;
+
+    wire divclk = ctr[5];
+    reg divclk_prev;
+    wire divclk_edge = divclk ^ divclk_prev;
+
+
+    reg  lrclk_prev;
+    wire lrclk_edge = lrclk ^ lrclk_prev;
+
     wire signed [15 : 0]  in_sample_16 = in_sample_24[23:8];
-    wire signed [15 : 0] out_sample_16;
+    wire signed [15 : 0] out_sample_16;// = test_out_sample;
 
     wire signed [23 : 0]  in_sample_24;
-    wire signed [23 : 0] out_sample_24 = in_sample_24;//{out_sample_16, 8'b0};
-	
-	i2s_clock_gen #(.data_width(data_width)) i2s_clocks (
-            .clk(clk),
-            .reset(reset),
-
-            .mclk(mclk),
-            .bclk(bclk),
-            .lrclk(lrclk)
-        );
-	
+    wire signed [23 : 0] out_sample_24;// = {4'b0, test_out_sample, 4'b0};//in_sample_24;//{out_sample_16, 8'b0};
+        
 	
     wire [7:0] spi_in;
     wire spi_in_valid;
@@ -372,7 +382,7 @@ module top
             .reset(reset),
 
             .in_sample(in_sample_16),
-            .out_sample(out_sample_16),
+            //.out_sample(out_sample_16),
         
             .sample_ready(in_sample_ready && !lrclk),
         
@@ -385,37 +395,109 @@ module top
             .fifo_count(fifo_count)
         );
 
-    sync_spi_slave spi
-        (
-            .clk(clk),
-            .reset(reset),
+    reg [23 : 0] sample_in = 0;
+    wire sample_valid;
 
-            .sck(sck),
-            .cs(cs),
-            .mosi(mosi),
-            .miso(miso),
-            .miso_byte(data_out),
+    reg [23 : 0] test_out_sample = 0;
 
-            .enable(1),
+    reg [32:0] ctr = 0;
 
-            .mosi_byte(spi_in),
-            .data_ready(spi_in_valid)
-        );
-    
-    i2s_rx_mono #(.data_width(24)) i2s_in (
-        .bclk(bclk),
+    reg [15:0] mclk_div_ctr = 0;
+    reg [15:0] bclk_div_ctr = 0;
+
+    reg mclk = 0;
+    reg bclk = 0;
+
+    reg pll_lock_sync = 0;
+    reg pll_lock_synced = 0;
+
+    reg pll_locked = 0;
+
+    reg first_cycle = 1;
+    reg third_cycle = 0;
+
+    always @(posedge clk) begin
+        
+        if (mclk_div_ctr == 4) begin
+            mclk <= ~mclk;
+            mclk_div_ctr <= 0;
+        end
+        else begin
+            mclk_div_ctr <= mclk_div_ctr + 1;
+        end
+
+        if (pll_locked) begin
+            if (bclk_div_ctr == 19) begin
+                bclk <= ~bclk;
+                bclk_div_ctr <= 0;
+            end
+            else begin
+                bclk_div_ctr <= bclk_div_ctr + 1;
+            end
+        end
+
+        ctr = ctr + 1;
+
+        test_out_sample <= test_out_sample + 16;
+        
+        lrclk_prev <= lrclk;
+        divclk_prev <= divclk;
+
+        if (i2s_sample_in_valid) begin
+            sample_in <= i2s_sample_in;
+        end
+
+        pll_lock_sync <= pll_lock;
+        pll_lock_synced <= pll_lock_sync;
+
+        if (first_cycle) begin
+            first_cycle <= 0;
+        end
+        else begin
+            third_cycle <= 1;
+        end
+
+        if (third_cycle && pll_lock_synced) 
+            pll_locked <= 1;
+    end
+
+    wire lrclk;
+    i2s_lrclk_gen #(.data_width(16)) lrclk_gen (.bclk(bclk), .rst(reset), .lrclk(lrclk));
+
+    i2s_tx_mono_stereo #(.data_width(24)) i2s_tx (
         .rst(reset),
+        .sample_in(sample_in),
+        .bclk(bclk),
         .lrclk(lrclk),
-        .sdata(i2s_din),
-        .sample(in_sample_24),
-        .sample_valid(in_sample_ready)
+        .sdata(i2s_dout)
     );
 
-    i2s_tx_mono_stereo #(.data_width(24)) i2s_out (
-            .bclk(bclk),                 // bit clock
-            .rst(reset),                  // reset in bclk domain (active high)
-            .lrclk(lrclk),                // word-select (from i2s_lrclk_gen)
-            .sample_in(out_sample_24),  // mono sample to output
-            .sdata(i2s_dout)
-        );
+    wire signed [23 : 0] i2s_sample_in;
+    wire i2s_sample_in_valid;
+
+    i2s_rx_mono #(.data_width(24), .BIT_OFFSET(0)) i2s_rx (
+            .bclk(bclk),
+            .rst(reset),
+            .lrclk(lrclk),
+            .sdata(i2s_din),
+            .sample(i2s_sample_in),
+            .sample_valid(i2s_sample_in_valid)
+    );
+
+    sync_spi_slave spi
+    (
+        .clk(clk),
+        .reset(reset),
+
+        .sck(sck),
+        .cs(cs),
+        .mosi(mosi),
+        .miso(miso),
+        .miso_byte(data_out),
+
+        .enable(1),
+
+        .mosi_byte(spi_in),
+        .data_ready(spi_in_valid)
+    );
 endmodule
