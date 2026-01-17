@@ -302,7 +302,7 @@ module pipeline_block
                         case (state)
                             `BLOCK_STATE_BEGIN: begin
                                 summand_a <=  src_a_latched;
-                                summand_b <= -src_b_latched;
+                                summand_b <=  src_b_latched;
                                 state <= `BLOCK_STATE_ADD_WAIT;
                             end
                             

@@ -1,5 +1,5 @@
 #include <verilated.h>
-#include "Vdsp_engine.h"
+#include "Vdsp_engine_seq.h"
 #include "verilated_fst_c.h"
 #include <fstream>
 #include <vector>
@@ -73,7 +73,7 @@ static bool write_wav16_mono(const char* path,
 VerilatedFstC* tfp = NULL;
 static uint64_t ticks = 0;
 
-void tick(Vdsp_engine* dut)
+void tick(Vdsp_engine_seq* dut)
 {
 	assert(dut != NULL);
 	
@@ -119,18 +119,23 @@ int16_t float_to_q15(float x)
 #define BLOCK_INSTR_MUL 	6
 #define BLOCK_INSTR_MAC		7
 #define BLOCK_INSTR_ABS		8
-#define BLOCK_INSTR_BIQ_DF1	9
 #define BLOCK_INSTR_LUT		10
 #define BLOCK_INSTR_ENVD 	11
 #define BLOCK_INSTR_DELAY 	12
+#define BLOCK_INSTR_GW		13
+#define BLOCK_INSTR_MOV		14
+#define BLOCK_INSTR_CLAMP	15
 
 #define BLOCK_INSTR_OP_WIDTH 5
 #define BLOCK_REG_ADDR_WIDTH 4
 
 #define BLOCK_INSTR_OP_TYPE_START 	(4 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH)
-#define BLOCK_INSTR_PMS_START		(BLOCK_INSTR_OP_TYPE_START + 4)
+#define BLOCK_INSTR_PMS_START		(BLOCK_INSTR_OP_TYPE_START + 5)
 
-#define BLOCK_INSTR(opcode, src_a, src_b, src_c, dest, a_reg, b_reg, c_reg, dest_reg, shift) (\
+#define BLOCK_INSTR(opcode, src_a, src_b, src_c, dest, a_reg, b_reg, c_reg, dest_reg, shift) \
+	BLOCK_INSTR_S(opcode, src_a, src_b, src_c, dest, a_reg, b_reg, c_reg, dest_reg, shift, sat)
+	
+#define BLOCK_INSTR_S(opcode, src_a, src_b, src_c, dest, a_reg, b_reg, c_reg, dest_reg, shift, sat) (\
 		  ((uint32_t)opcode) \
 		| ((uint32_t)src_a 	<< (0 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH    )) \
 		| ((uint32_t)src_b 	<< (1 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH    )) \
@@ -140,17 +145,18 @@ int16_t float_to_q15(float x)
 		| ((uint32_t)b_reg 	<< (BLOCK_INSTR_OP_TYPE_START + 1)) \
 		| ((uint32_t)c_reg 	<< (BLOCK_INSTR_OP_TYPE_START + 2)) \
 		| ((uint32_t)dest_reg	<< (BLOCK_INSTR_OP_TYPE_START + 3)) \
-		| ((uint32_t)shift << (BLOCK_INSTR_PMS_START)))
+		| ((uint32_t)shift << (BLOCK_INSTR_PMS_START)) \
+		| ((uint32_t)sat   << (BLOCK_INSTR_OP_TYPE_START + 4)))
 
 #define COMMAND_WRITE_BLOCK_INSTR 	0b10010000
 #define COMMAND_WRITE_BLOCK_REG 	0b11100000
 #define COMMAND_UPDATE_BLOCK_REG 	0b11101001
 #define COMMAND_ALLOC_SRAM_DELAY 	0b00100000
 #define COMMAND_SWAP_PIPELINES 		0b00000001
-#define COMMAND_RESET_PIPELINE 			0b00001001
+#define COMMAND_RESET_PIPELINE 		0b00001001
 
 
-void send_input_byte(Vdsp_engine *dut, uint8_t byte)
+void send_input_byte(Vdsp_engine_seq *dut, uint8_t byte)
 {
 	printf("Sending input byte 0b%08b. FIFO count: %d\n", byte, dut->fifo_count);
 	dut->command_in = byte;
@@ -163,16 +169,9 @@ void send_input_byte(Vdsp_engine *dut, uint8_t byte)
 	tick(dut);
 }
 
-void wait_for_input_req(Vdsp_engine *dut)
+void write_block_instr(Vdsp_engine_seq* dut, int block, uint32_t instr)
 {
-	dut->command_in_ready = 0;
-	while (!dut->command_read)
-		tick(dut);
-}
-
-void write_block_instr(Vdsp_engine* dut, int block, uint32_t instr)
-{
-	printf("Set block %d instruction to %d\n", block, instr);
+	printf("Set block %d instruction to %d = 0b%032b\n", block, instr, instr);
 	send_input_byte(dut, COMMAND_WRITE_BLOCK_INSTR);
 	
 	send_input_byte(dut, block);
@@ -186,14 +185,14 @@ void write_block_instr(Vdsp_engine* dut, int block, uint32_t instr)
 	send_input_byte(dut, instr & 0xFFFF);
 }
 
-void send_data_command(Vdsp_engine *dut, int command, uint16_t data)
+void send_data_command(Vdsp_engine_seq *dut, int command, uint16_t data)
 {
 	send_input_byte(dut, command);
 	send_input_byte(dut, (data >> 8) & 0xFFFF);
 	send_input_byte(dut, data & 0xFFFF);
 }
 
-void write_block_register(Vdsp_engine* dut, int block, int reg, uint16_t val)
+void write_block_register(Vdsp_engine_seq* dut, int block, int reg, uint16_t val)
 {
 	printf("Write block register: %d.%d <= %.06f\n", block, reg, (float)(val / (float)(1 << 15)));
 	
@@ -213,20 +212,70 @@ void write_block_register(Vdsp_engine* dut, int block, int reg, uint16_t val)
 	send_input_byte(dut, val & 0xFFFF);
 }
 
-void load_biquad(Vdsp_engine* dut, int block, float b0, float b1, float b2, float a1, float a2)
-{   
-    write_block_instr(dut, block, BLOCK_INSTR(BLOCK_INSTR_BIQ_DF1, 0, 4, 0, 0, 0, 1, 0, 0, 0));
-    
-    write_block_register(dut, block, 0, 0);
-    write_block_register(dut, block, 1, 0);
-    write_block_register(dut, block, 2, 0);
-    write_block_register(dut, block, 3, 0);
-    write_block_register(dut, block, 4, float_to_q_nminus1(b0, 1));
-    write_block_register(dut, block, 5, float_to_q_nminus1(b1, 1));
-    write_block_register(dut, block, 6, float_to_q_nminus1(b2, 1));
-    write_block_register(dut, block, 7, float_to_q_nminus1(a1, 1));
-    write_block_register(dut, block, 8, float_to_q_nminus1(a2, 1));
+void load_biquad(Vdsp_engine_seq* dut,
+                 int base_block,
+                 float b0, float b1, float b2,
+                 float a1, float a2)
+{
+	// channels:
+	// ch0 = x[n]
+	// ch1 = x[n]
+	// ch2 = x[n-1]
+	// ch3 = x[n-2]
+	// ch4 = y[n-1]
+	// ch5 = y[n-2]
+	
+	// move previous sample's x[n-1] to ch3
+    write_block_instr(dut, base_block + 0,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 2, 0, 0, 3, 0, 0, 0, 0, 0, 1));
+    // move previous sample's x[n] to ch2
+    write_block_instr(dut, base_block + 1,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 1, 0, 0, 2, 0, 0, 0, 0, 0, 1));
+    // copy x[n] to ch1
+    write_block_instr(dut, base_block + 2,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] = b0*ch0
+    write_block_register(dut, base_block + 3, 0, float_to_q_nminus1(b0, 1));
+    write_block_instr(dut, base_block + 3,
+        BLOCK_INSTR_S(BLOCK_INSTR_MUL, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] + b1*x[n-1] = b1*ch2 + ch0
+    write_block_register(dut, base_block + 4, 0, float_to_q_nminus1(b1, 1));
+    write_block_instr(dut, base_block + 4,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAC, 2, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] + b1*x[n-1] + b2*x[n-1] = b2*ch3 + ch0
+    write_block_register(dut, base_block + 5, 0, float_to_q_nminus1(b2, 1));
+    write_block_instr(dut, base_block + 5,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAC, 3, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] + b1*x[n-1] + b2*x[n-1] - a1y[n-1] = -a1*ch4 + ch0
+    write_block_register(dut, base_block + 6, 0, float_to_q_nminus1(-a1, 1));
+    write_block_instr(dut, base_block + 6,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAC, 4, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] + b1*x[n-1] + b2*x[n-1] - a1y[n-1] - a2y[n-2] = -a2*ch5 + ch0
+    write_block_register(dut, base_block + 7, 0, float_to_q_nminus1(-a2, 1));
+    write_block_instr(dut, base_block + 7,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAC, 5, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// clamp to [-1, 1)
+	write_block_instr(dut, base_block + 8,
+        BLOCK_INSTR_S(BLOCK_INSTR_CLAMP, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0));
+       
+    // shift back to format
+	write_block_instr(dut, base_block + 9,
+        BLOCK_INSTR_S(BLOCK_INSTR_LSH, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+
+	// move previous sample's y[n-1] to ch5
+    write_block_instr(dut, base_block + 10,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 4, 0, 0, 5, 0, 0, 0, 0, 0, 0));
+    // move y[n] to ch4
+    write_block_instr(dut, base_block + 11,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0));
 }
+
 
 int pow2_ceil(int x)
 {
@@ -240,7 +289,7 @@ int pow2_ceil(int x)
 
 #define MS_TO_SAMPLES(x) ((int)roundf(((float)x * 48.0f)))
 
-void alloc_sram_delay(Vdsp_engine *dut, int ms)
+void alloc_sram_delay(Vdsp_engine_seq *dut, int ms)
 {
 	printf("Allocating SRAM delay buffer of size %d\n", pow2_ceil(MS_TO_SAMPLES(ms)));
 	send_data_command(dut, COMMAND_ALLOC_SRAM_DELAY, pow2_ceil(MS_TO_SAMPLES(ms)));
@@ -270,7 +319,7 @@ int main(int argc, char** argv)
     out_samples.reserve(in_samples.size());
 
     // ---------------- Verilator DUT ----------------
-    Vdsp_engine* dut = new Vdsp_engine;
+    Vdsp_engine_seq* dut = new Vdsp_engine_seq;
 
 	Verilated::traceEverOn(true);
 	
@@ -301,10 +350,10 @@ int main(int argc, char** argv)
 	//load_biquad(dut, 0, 1, 0, 0, 0, 0);
 	
 	// 1kHz LPF
-	load_biquad(dut, 0, (float)0.0039160767, (float)0.0078321534, (float)0.0039160767, (float)-1.8153179157, (float)0.8309822224);
+	//load_biquad(dut, 0, (float)0.0039160767, (float)0.0078321534, (float)0.0039160767, (float)-1.8153179157, (float)0.8309822224);
 
 	// 200Hz HPF
-	//load_biquad(dut, 0, (float)0.9816555739f, (float)-1.9633111479f, (float)0.9816555739f, (float)-1.9629747014f, (float)0.9636475944f);
+	load_biquad(dut, 0, (float)0.9816555739f, (float)-1.9633111479f, (float)0.9816555739f, (float)-1.9629747014f, (float)0.9636475944f);
 	
 	// 2kHz band-pass
 	//load_biquad(dut, 0, (float)0.1253540215, (float)0.0, (float)-0.1253540215, (float)-1.8713103092, (float)0.9373229892);
@@ -351,6 +400,10 @@ int main(int argc, char** argv)
 	
 	write_block_instr(dut, 2, BLOCK_INSTR(BLOCK_INSTR_MUL, 0, 0, 0, 0, 0, 1, 0, 0, 0));
 	write_block_register(dut, 2, 0, float_to_q15(0.5));*/
+	
+	/*write_block_register(dut, 0, 0, 10);
+    write_block_instr(dut, 0,
+        BLOCK_INSTR_S(BLOCK_INSTR_ADD, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0));*/
 	
 	send_input_byte(dut, COMMAND_SWAP_PIPELINES);
 
