@@ -1,5 +1,9 @@
 impl/temp/rtl_parser_arg.json
 /impl
+<<<<<<< Updated upstream
 
 .fst
 verilator/waveform.vst
+=======
+dude.gprj.user
+>>>>>>> Stashed changes
