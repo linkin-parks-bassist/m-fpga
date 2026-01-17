@@ -2,19 +2,19 @@
 //All rights reserved.
 //File Title: IP file
 //Tool Version: V1.9.12 (64-bit)
-//Part Number: GW2AR-LV18QN88PC8/I7
+//Part Number: GW2AR-LV18QN88C8/I7
 //Device: GW2AR-18
 //Device Version: C
-//Created Time: Wed Dec 17 13:57:06 2025
+//Created Time: Wed Jan 14 07:43:44 2026
 
-module Gowin_rPLL (clkout, lock, clkin);
+module Gowin_rPLL (clkout, lock, clkoutd, clkin);
 
 output clkout;
 output lock;
+output clkoutd;
 input clkin;
 
 wire clkoutp_o;
-wire clkoutd_o;
 wire clkoutd3_o;
 wire gw_gnd;
 
@@ -24,7 +24,7 @@ rPLL rpll_inst (
     .CLKOUT(clkout),
     .LOCK(lock),
     .CLKOUTP(clkoutp_o),
-    .CLKOUTD(clkoutd_o),
+    .CLKOUTD(clkoutd),
     .CLKOUTD3(clkoutd3_o),
     .RESET(gw_gnd),
     .RESET_P(gw_gnd),
@@ -40,9 +40,9 @@ rPLL rpll_inst (
 
 defparam rpll_inst.FCLKIN = "27";
 defparam rpll_inst.DYN_IDIV_SEL = "false";
-defparam rpll_inst.IDIV_SEL = 8;
+defparam rpll_inst.IDIV_SEL = 5;
 defparam rpll_inst.DYN_FBDIV_SEL = "false";
-defparam rpll_inst.FBDIV_SEL = 40;
+defparam rpll_inst.FBDIV_SEL = 24;
 defparam rpll_inst.DYN_ODIV_SEL = "false";
 defparam rpll_inst.ODIV_SEL = 8;
 defparam rpll_inst.PSDA_SEL = "0000";
@@ -56,7 +56,7 @@ defparam rpll_inst.CLKFB_SEL = "internal";
 defparam rpll_inst.CLKOUT_BYPASS = "false";
 defparam rpll_inst.CLKOUTP_BYPASS = "false";
 defparam rpll_inst.CLKOUTD_BYPASS = "false";
-defparam rpll_inst.DYN_SDIV_SEL = 2;
+defparam rpll_inst.DYN_SDIV_SEL = 10;
 defparam rpll_inst.CLKOUTD_SRC = "CLKOUT";
 defparam rpll_inst.CLKOUTD3_SRC = "CLKOUT";
 defparam rpll_inst.DEVICE = "GW2AR-18C";

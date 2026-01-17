@@ -211,7 +211,7 @@ module dsp_core #(
 			ready <= 1;
 			
 			for (i = 0; i < n_channels; i = i + 1)
-				ch_regs[i] <= '0;
+				ch_regs[i] <= 0;
 		end else begin
 			case (state)
 				`CORE_STATE_READY: begin

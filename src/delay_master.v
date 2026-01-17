@@ -27,7 +27,7 @@ module delay_master
 		output reg req_sram_write,
 		output reg [sram_addr_width - 1 : 0] req_sram_read_addr,
 		output reg [sram_addr_width - 1 : 0] req_sram_write_addr,
-		output reg [data_width 		- 1 : 0] data_to_sram,
+		output reg [data_width 	  - 1 : 0] data_to_sram,
 		
 		input wire sram_read_ready,
 		input wire sram_write_ready,

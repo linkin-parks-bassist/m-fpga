@@ -45,6 +45,49 @@ module pipeline_seq
 	reg wait_one = 0;
 	
 	wire core_ready;
+
+    wire lut_req;
+	wire [`LUT_HANDLE_WIDTH - 1 : 0] lut_req_handle;
+	wire signed [data_width - 1 : 0] lut_req_arg;
+	wire signed [data_width - 1 : 0] lut_data;
+	wire lut_ready;
+	
+	wire controller_ready;
+	wire invalid_command;
+	
+	wire sram_read;
+	wire sram_write;
+
+	localparam sram_capacity = n_sram_banks * sram_bank_size;
+	localparam sram_addr_width = $clog2(sram_capacity + 1);
+
+	wire [sram_addr_width - 1 : 0] sram_read_addr;
+	wire [sram_addr_width - 1 : 0] sram_write_addr;
+	wire [data_width - 1 : 0] sram_data_in;
+	wire [data_width - 1 : 0] sram_data_out;
+	
+	wire sram_read_ready;
+	wire sram_write_ready;
+	
+	wire sram_read_invalid;
+	wire sram_write_invalid;
+	
+	wire block_reg_write;
+	wire invalid_lut_request;
+
+    wire delay_read_req;
+	wire delay_write_req;
+	wire [data_width - 1 : 0] delay_req_handle;
+	wire [data_width - 1 : 0] delay_req_arg;
+	wire [data_width - 1 : 0] delay_read_data;
+	wire delay_read_ready;
+	wire delay_write_ready;
+	
+	wire invalid_delay_read;
+	wire invalid_delay_write;
+	wire invalid_delay_alloc;
+	
+	wire [sram_addr_width - 1 : 0] ctrl_data_addr_width;
 	
 	always @(posedge clk) begin
 		wait_one <= 0;
@@ -90,34 +133,17 @@ module pipeline_seq
 		end
 	end
 	
-	wire lut_req;
-	wire [`LUT_HANDLE_WIDTH - 1 : 0] lut_req_handle;
-	wire signed [data_width - 1 : 0] lut_req_arg;
-	wire signed [data_width - 1 : 0] lut_data;
-	wire lut_ready;
-	
-	wire controller_ready;
-	wire invalid_command;
-	
-	wire sram_read;
-	wire sram_write;
-
-	localparam sram_capacity = n_sram_banks * sram_bank_size;
-	localparam sram_addr_width = $clog2(sram_capacity + 1);
-
-	wire [sram_addr_width - 1 : 0] sram_read_addr;
-	wire [sram_addr_width - 1 : 0] sram_write_addr;
-	wire [data_width - 1 : 0] sram_data_in;
-	wire [data_width - 1 : 0] sram_data_out;
-	
-	wire sram_read_ready;
-	wire sram_write_ready;
-	
-	wire sram_read_invalid;
-	wire sram_write_invalid;
-	
-	wire block_reg_write;
-	wire invalid_lut_request;
+	generate
+		if (sram_addr_width < data_width) begin : ADDR_SMALL
+			assign ctrl_data_addr_width = ctrl_data[sram_addr_width - 1 : 0];
+		end
+		else if (sram_addr_width > data_width) begin : ADDR_BIG
+			assign ctrl_data_addr_width =  {{(sram_addr_width - data_width){1'b0}}, ctrl_data};
+		end
+		else begin : ADDR_SAME
+			assign ctrl_data_addr_width = ctrl_data;
+		end
+	endgenerate
 	
 	dsp_core #(.data_width(data_width), .n_blocks(n_blocks), .n_channels(n_channels), .n_registers(n_block_registers)) core (
 		.clk(clk),
@@ -191,32 +217,6 @@ module pipeline_seq
 			.invalid_read(sram_read_invalid),
 			.invalid_write(sram_write_invalid)
 		);
-	
-	wire delay_read_req;
-	wire delay_write_req;
-	wire [data_width - 1 : 0] delay_req_handle;
-	wire [data_width - 1 : 0] delay_req_arg;
-	wire [data_width - 1 : 0] delay_read_data;
-	wire delay_read_ready;
-	wire delay_write_ready;
-	
-	wire invalid_delay_read;
-	wire invalid_delay_write;
-	wire invalid_delay_alloc;
-	
-	wire [sram_addr_width - 1 : 0] ctrl_data_addr_width;
-	
-	generate
-		if (sram_addr_width < data_width) begin : ADDR_SMALL
-			assign ctrl_data_addr_width = ctrl_data[sram_addr_width - 1 : 0];
-		end
-		else if (sram_addr_width > data_width) begin : ADDR_BIG
-			assign ctrl_data_addr_width =  {{(sram_addr_width - data_width){1'b0}}, ctrl_data};
-		end
-		else begin : ADDR_SAME
-			assign ctrl_data_addr_width = ctrl_data;
-		end
-	endgenerate
 	
 	delay_master #(
 			.data_width(data_width), 

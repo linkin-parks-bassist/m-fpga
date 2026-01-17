@@ -11,7 +11,7 @@ module rr_arbiter
 		input wire clk,
 		input wire reset,
 		
-		input wire [req_data_width - 1 : 0] req_data [0 : n_clients - 1],
+		input wire [(n_clients * req_data_width) - 1 : 0] req_data,
 		input wire [n_clients  - 1 : 0] reqs,
 		
 		output reg [server_data_width - 1 : 0] data_out,
@@ -47,7 +47,7 @@ module rr_arbiter
 			case (state)
 				`RR_ARBITER_STATE_READY: begin
 					if (reqs[client]) begin
-						arbiter_req_data <= req_data[client];
+						arbiter_req_data <= req_data[n_clients * client +: req_data_width];
 						arbiter_req <= 1;
 					
 						state <= `RR_ARBITER_STATE_WAIT;
