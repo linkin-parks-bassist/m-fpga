@@ -25,7 +25,9 @@ module dsp_engine_seq
         
         output reg ready,
         
-        output wire [$clog2(spi_fifo_length) : 0] fifo_count
+        output wire [$clog2(spi_fifo_length) : 0] fifo_count,
+
+        output wire current_pipeline
     );
     
     reg  signed [data_width - 1 : 0]  in_sample_latched;
@@ -41,7 +43,7 @@ module dsp_engine_seq
     wire pipeline_a_error;
     wire pipeline_b_error;
 
-    wire current_pipeline;
+    //wire current_pipeline;
     wire pipelines_swapping;
 
     wire [1:0] block_instr_write;

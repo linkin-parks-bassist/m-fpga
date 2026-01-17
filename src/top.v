@@ -135,11 +135,10 @@ module top
     reg [7:0] spi_capture;
 
     // LED assignments (example - you can modify these)
-    assign led0 = ~spi_capture[0];
-    assign led1 = ~spi_capture[1];
-    assign led3 = ~spi_capture[2];
-    assign led4 = ~spi_capture[3];
-    assign led5 = ~0;
+    assign led0 = ~(~cs);
+    //assign led1 = ~0;
+    assign led3 = ~(|sample_in_abs[15:12]);
+    assign led4 = ~(|sample_out_abs[15:12]);
 
     localparam sample_size = 16;
 
@@ -147,6 +146,7 @@ module top
     wire [sample_size-1:0] sample_in;
 
     wire [sample_size-1:0] sample_in_abs = sample_in[15] ? -sample_in : sample_in;
+    wire [sample_size-1:0] sample_out_abs = sample_out[15] ? -sample_out : sample_out;
 
     wire sample_valid;
 
@@ -186,7 +186,9 @@ module top
         
             .ready(engine_ready),
         
-            .fifo_count(fifo_count)
+            .fifo_count(fifo_count),
+
+            .current_pipeline(led1)
         );
 
     sync_spi_slave spi
