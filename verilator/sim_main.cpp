@@ -1,16 +1,6 @@
-#include <verilated.h>
-#include "Vtop.h"
-#include "verilated_fst_c.h"
-#include <fstream>
-#include <vector>
-#include <cstdint>
-#include <cstring>
-#include <iostream>
-#include "sim_io.h"
-#include "math.h"
+#include "sim_main.h"
 
 Vtop* dut = new Vtop;
-sim_io_state io;
 
 #define DUMP_WAVEFORM
 
@@ -129,14 +119,14 @@ int tick()
 		return 1;
 	
 	dut->sys_clk = 1;
-	sim_io_update(dut, &io);
+	sim_io_update(&io);
 	dut->eval();
 	if (tfp) tfp->dump(ticks++);
 	
 	//print_state();
 	
 	dut->sys_clk = 0;
-	sim_io_update(dut, &io);
+	sim_io_update(&io);
 	dut->eval();
 	if (tfp) tfp->dump(ticks++);
 	
@@ -145,25 +135,6 @@ int tick()
 	return 0;
 }
 
-int16_t float_to_q_nminus1(float x, int shift)
-{
-    // shift = 15 - n  (your instruction encoding)
-    int n = 15 - shift;   // actual fractional bits
-
-    // Qm.n scale
-    float scale = (float)(1 << n);
-
-    // Compute representable real range for signed 16-bit Qm.n
-    float max =  (float)((1 << 15) - 1) / scale;
-    float min = -(float)(1 << 15)       / scale;
-
-    if (x > max) x = max;
-    if (x < min) x = min;
-
-    return (int16_t)lrintf(x * scale);
-}
-
-
 int16_t float_to_q15(float x)
 {
 	if (x >= 0.999969482421875f) return  32767;
@@ -171,28 +142,6 @@ int16_t float_to_q15(float x)
     
     return (int16_t)lrintf(x * 32768.0f);
 }
-
-#define BLOCK_INSTR_NOP 	0
-#define BLOCK_INSTR_ADD 	1
-#define BLOCK_INSTR_SUB 	2
-#define BLOCK_INSTR_LSH 	3
-#define BLOCK_INSTR_RSH 	4
-#define BLOCK_INSTR_ARSH 	5
-#define BLOCK_INSTR_MUL 	6
-#define BLOCK_INSTR_MAC		7
-#define BLOCK_INSTR_ABS		8
-#define BLOCK_INSTR_LUT		10
-#define BLOCK_INSTR_ENVD 	11
-#define BLOCK_INSTR_DELAY 	12
-#define BLOCK_INSTR_GW		13
-#define BLOCK_INSTR_MOV		14
-#define BLOCK_INSTR_CLAMP	15
-
-#define BLOCK_INSTR_OP_WIDTH 5
-#define BLOCK_REG_ADDR_WIDTH 4
-
-#define BLOCK_INSTR_OP_TYPE_START 	(4 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH)
-#define BLOCK_INSTR_PMS_START		(BLOCK_INSTR_OP_TYPE_START + 5)
 
 #define BLOCK_INSTR(opcode, src_a, src_b, src_c, dest, a_reg, b_reg, c_reg, dest_reg, shift) \
 	BLOCK_INSTR_S(opcode, src_a, src_b, src_c, dest, a_reg, b_reg, c_reg, dest_reg, shift, sat)
@@ -210,19 +159,7 @@ int16_t float_to_q15(float x)
 		| ((uint32_t)shift << (BLOCK_INSTR_PMS_START)) \
 		| ((uint32_t)sat   << (BLOCK_INSTR_OP_TYPE_START + 4)))
 
-#define COMMAND_WRITE_BLOCK_INSTR 	0b10010000
-#define COMMAND_WRITE_BLOCK_REG 	0b11100000
-#define COMMAND_UPDATE_BLOCK_REG 	0b11101001
-#define COMMAND_ALLOC_SRAM_DELAY 	0b00100000
-#define COMMAND_SWAP_PIPELINES 		0b00000001
-#define COMMAND_RESET_PIPELINE 		0b00001001
-
-int spi_send(uint8_t byte)
-{
-	return spi_enqueue(&io, byte);
-}
-
-void write_block_instr(Vtop* dut, int block, uint32_t instr)
+void write_block_instr(int block, uint32_t instr)
 {
 	printf("Set block %d instruction to %d = 0b%032b\n", block, instr, instr);
 	spi_send(COMMAND_WRITE_BLOCK_INSTR);
@@ -238,14 +175,14 @@ void write_block_instr(Vtop* dut, int block, uint32_t instr)
 	spi_send(instr & 0xFFFF);
 }
 
-void send_data_command(Vtop *dut, int command, uint16_t data)
+void send_data_command(int command, uint16_t data)
 {
 	spi_send(command);
 	spi_send((data >> 8) & 0xFFFF);
 	spi_send(data & 0xFFFF);
 }
 
-void write_block_register(Vtop* dut, int block, int reg, uint16_t val)
+void write_block_register(int block, int reg, uint16_t val)
 {
 	printf("Write block register: %d.%d <= %.06f\n", block, reg, (float)(val / (float)(1 << 15)));
 	
@@ -265,8 +202,7 @@ void write_block_register(Vtop* dut, int block, int reg, uint16_t val)
 	spi_send(val & 0xFFFF);
 }
 
-void load_biquad(Vtop* dut,
-                 int base_block,
+void load_biquad(int base_block,
                  float b0, float b1, float b2,
                  float a1, float a2)
 {
@@ -279,53 +215,53 @@ void load_biquad(Vtop* dut,
 	// ch5 = y[n-2]
 	
 	// move previous sample's x[n-1] to ch3
-    write_block_instr(dut, base_block + 0,
+    write_block_instr(base_block + 0,
         BLOCK_INSTR_S(BLOCK_INSTR_MOV, 2, 0, 0, 3, 0, 0, 0, 0, 0, 1));
     // move previous sample's x[n] to ch2
-    write_block_instr(dut, base_block + 1,
+    write_block_instr(base_block + 1,
         BLOCK_INSTR_S(BLOCK_INSTR_MOV, 1, 0, 0, 2, 0, 0, 0, 0, 0, 1));
     // copy x[n] to ch1
-    write_block_instr(dut, base_block + 2,
+    write_block_instr(base_block + 2,
         BLOCK_INSTR_S(BLOCK_INSTR_MOV, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1));
 
 	// ch0 = b0*x[n] = b0*ch0
-    write_block_register(dut, base_block + 3, 0, float_to_q_nminus1(b0, 1));
-    write_block_instr(dut, base_block + 3,
+    write_block_register(base_block + 3, 0, float_to_q_nminus1(b0, 1));
+    write_block_instr(base_block + 3,
         BLOCK_INSTR_S(BLOCK_INSTR_MUL, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1));
 
 	// ch0 = b0*x[n] + b1*x[n-1] = b1*ch2 + ch0
-    write_block_register(dut, base_block + 4, 0, float_to_q_nminus1(b1, 1));
-    write_block_instr(dut, base_block + 4,
-        BLOCK_INSTR_S(BLOCK_INSTR_MAC, 2, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+    write_block_register(base_block + 4, 0, float_to_q_nminus1(b1, 1));
+    write_block_instr(base_block + 4,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAD, 2, 0, 0, 0, 0, 1, 0, 0, 0, 1));
 
 	// ch0 = b0*x[n] + b1*x[n-1] + b2*x[n-1] = b2*ch3 + ch0
-    write_block_register(dut, base_block + 5, 0, float_to_q_nminus1(b2, 1));
-    write_block_instr(dut, base_block + 5,
-        BLOCK_INSTR_S(BLOCK_INSTR_MAC, 3, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+    write_block_register(base_block + 5, 0, float_to_q_nminus1(b2, 1));
+    write_block_instr(base_block + 5,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAD, 3, 0, 0, 0, 0, 1, 0, 0, 0, 1));
 
 	// ch0 = b0*x[n] + b1*x[n-1] + b2*x[n-1] - a1y[n-1] = -a1*ch4 + ch0
-    write_block_register(dut, base_block + 6, 0, float_to_q_nminus1(-a1, 1));
-    write_block_instr(dut, base_block + 6,
-        BLOCK_INSTR_S(BLOCK_INSTR_MAC, 4, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+    write_block_register(base_block + 6, 0, float_to_q_nminus1(-a1, 1));
+    write_block_instr(base_block + 6,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAD, 4, 0, 0, 0, 0, 1, 0, 0, 0, 1));
 
 	// ch0 = b0*x[n] + b1*x[n-1] + b2*x[n-1] - a1y[n-1] - a2y[n-2] = -a2*ch5 + ch0
-    write_block_register(dut, base_block + 7, 0, float_to_q_nminus1(-a2, 1));
-    write_block_instr(dut, base_block + 7,
-        BLOCK_INSTR_S(BLOCK_INSTR_MAC, 5, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+    write_block_register(base_block + 7, 0, float_to_q_nminus1(-a2, 1));
+    write_block_instr(base_block + 7,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAD, 5, 0, 0, 0, 0, 1, 0, 0, 0, 1));
 
 	// clamp to [-1, 1)
-	write_block_instr(dut, base_block + 8,
+	write_block_instr(base_block + 8,
         BLOCK_INSTR_S(BLOCK_INSTR_CLAMP, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0));
        
     // shift back to format
-	write_block_instr(dut, base_block + 9,
+	write_block_instr(base_block + 9,
         BLOCK_INSTR_S(BLOCK_INSTR_LSH, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 
 	// move previous sample's y[n-1] to ch5
-    write_block_instr(dut, base_block + 10,
+    write_block_instr(base_block + 10,
         BLOCK_INSTR_S(BLOCK_INSTR_MOV, 4, 0, 0, 5, 0, 0, 0, 0, 0, 0));
     // move y[n] to ch4
-    write_block_instr(dut, base_block + 11,
+    write_block_instr(base_block + 11,
         BLOCK_INSTR_S(BLOCK_INSTR_MOV, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0));
 }
 
@@ -342,10 +278,38 @@ int pow2_ceil(int x)
 
 #define MS_TO_SAMPLES(x) ((int)roundf(((float)x * 48.0f)))
 
-void alloc_sram_delay(Vtop *dut, int ms)
+void alloc_sram_delay(int ms)
 {
 	printf("Allocating SRAM delay buffer of size %d\n", pow2_ceil(MS_TO_SAMPLES(ms)));
-	send_data_command(dut, COMMAND_ALLOC_SRAM_DELAY, pow2_ceil(MS_TO_SAMPLES(ms)));
+	send_data_command(COMMAND_ALLOC_SRAM_DELAY, pow2_ceil(MS_TO_SAMPLES(ms)));
+}
+
+void set_input_gain(float gain_db)
+{
+	float v = powf(10, gain_db / 20.0f);
+	uint16_t s = float_to_q_nminus1(v, 5);
+			
+	printf("Telling FPGA to change input gain to %fdB = %f = 0b%d%d%d%d%d.%d%d%d%d%d%d%d%d%d%d%d\n", gain_db, v,
+		!!(s & (1 << 15)),
+		!!(s & (1 << 14)),
+		!!(s & (1 << 13)),
+		!!(s & (1 << 12)),
+		!!(s & (1 << 11)),
+		!!(s & (1 << 10)),
+		!!(s & (1 << 9)),
+		!!(s & (1 << 8)),
+		!!(s & (1 << 7)),
+		!!(s & (1 << 6)),
+		!!(s & (1 << 5)),
+		!!(s & (1 << 4)),
+		!!(s & (1 << 3)),
+		!!(s & (1 << 2)),
+		!!(s & (1 << 1)),
+		!!(s & (1 << 0)));
+	
+	spi_send(COMMAND_SET_INPUT_GAIN);
+	spi_send((s & 0xFF00) >> 8);
+	spi_send(s & 0x00FF);
 }
 
 int main(int argc, char** argv)
@@ -386,18 +350,31 @@ int main(int argc, char** argv)
 	tfp->open("./verilator/waveform.fst");
 	#endif
 
+	pipeline *pl;
+	effect *eff;
+	transfer_sequence tfseq;
 
 	for (int i = 0; i < 16; i++)
 		tick();
 
-	load_biquad(dut, 0, (float)0.0039160767, (float)0.0078321534, (float)0.0039160767, (float)-1.8153179157, (float)0.8309822224);
-
-	spi_send(COMMAND_SWAP_PIPELINES);
-
 	int samples_processed = 0;
-    for (int i = 0; i < (1 << 25); i++)
+    for (int i = 0; i < (1 << 26); i++)
 	{
 		tick();
+		
+		if (i == (1 << 25))
+		{
+			printf("Sending pipeline...\n");
+			pl = new_pipeline();
+			eff = create_amplifier_effect(-6.0);
+			pipeline_add_effect(pl, eff);
+			
+			tfseq = pipeline_transfer_sequence(pl);
+			
+			send_transfer_sequence(tfseq);
+			while (spi_send(COMMAND_SWAP_PIPELINES) == 1)
+				tick();
+		}
 		
 		if (io.i2s_ready)
 		{
@@ -408,8 +385,6 @@ int main(int argc, char** argv)
 				int16_t y = static_cast<int16_t>(io.sample_out);
 				out_samples.push_back(y);
 				io.i2s_ready = 0;
-				
-				printf("Processed %d/%d samples...\n", samples_processed, n_samples);
 			}
 			else
 			{

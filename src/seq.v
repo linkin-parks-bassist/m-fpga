@@ -1,12 +1,14 @@
 `include "block.vh"
 `include "lut.vh"
 `include "seq.vh"
+`include "instr_dec.vh"
 
 module dsp_core #(
 		parameter integer data_width 		= 16,
 		parameter integer n_blocks			= 256,
 		parameter integer n_channels   		= 16,
-		parameter integer n_registers  		= 16
+		parameter integer n_registers  		= 16,
+		parameter integer memory_size		= 128
 	) (
 		input wire clk,
 		input wire reset,
@@ -60,25 +62,46 @@ module dsp_core #(
 	//
 	// Instruction decoding
 	//
-	wire [`BLOCK_INSTR_OP_WIDTH - 1 : 0] operation = instr[`BLOCK_INSTR_OP_WIDTH - 1 : 0];
+	wire [`BLOCK_INSTR_OP_WIDTH - 1 : 0] operation;
 	
-	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] src_a = instr[1 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH - 1 : 0 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH];
-	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] src_b = instr[2 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH - 1 : 1 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH];
-	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] src_c = instr[3 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH - 1 : 2 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH];
-	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] dest  = instr[4 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH - 1 : 3 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH];
+	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] src_a;
+	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] src_b;
+	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] src_c;
+	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] dest;
 	
-	localparam operand_type_start_index = 4 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH;
-	
-	wire src_a_reg = instr[operand_type_start_index + 0];
-	wire src_b_reg = instr[operand_type_start_index + 1];
-	wire src_c_reg = instr[operand_type_start_index + 2];
-	wire dest_reg  = instr[operand_type_start_index + 3];
+	wire src_a_reg;
+	wire src_b_reg;
+	wire src_c_reg;
+	wire dest_reg;
 
-    wire saturate = ~instr[operand_type_start_index + 4];
-	localparam pms_start_index = operand_type_start_index + 5;
+	wire saturate;
 
-    wire [SHIFT_WIDTH - 1 : 0] instr_shift = {{(SHIFT_WIDTH - `BLOCK_PMS_WIDTH){1'b0}}, instr[pms_start_index + `BLOCK_PMS_WIDTH - 1 : pms_start_index]};
+	wire [`SHIFT_WIDTH - 1 : 0] instr_shift;
 	
+	wire [`BLOCK_RES_ADDR_WIDTH - 1 : 0] res_addr;
+	
+	instr_decoder #(.data_width(data_width)) dec(
+		.instr(instr),
+		
+		.operation(operation),
+		
+		.src_a(src_a),
+		.src_b(src_b),
+		.src_c(src_c),
+		.dest(dest),
+		
+		.src_a_reg(src_a_reg),
+		.src_b_reg(src_b_reg),
+		.src_c_reg(src_c_reg),
+		.dest_reg(dest_reg),
+
+		.saturate(saturate),
+
+		.instr_shift(instr_shift),
+		
+		.res_addr(res_addr)
+	); 
+
 	reg signed [data_width - 1 : 0] src_a_latched;
 	reg signed [data_width - 1 : 0] src_b_latched;
 	reg signed [data_width - 1 : 0] src_c_latched;
@@ -101,6 +124,8 @@ module dsp_core #(
 	
 	wire signed [data_width - 1 : 0] sat_max_shifted_dw = sat_max_shifted[data_width - 1 : 0];
 	wire signed [data_width - 1 : 0] sat_min_shifted_dw = sat_min_shifted[data_width - 1 : 0];
+	
+	wire [data_width - 1 : 0] resource_addr = instr[`BLOCK_INSTR_WIDTH - 1 : `BLOCK_INSTR_WIDTH - 1 - data_width];
 	
 	//
 	// Local adder
@@ -164,6 +189,17 @@ module dsp_core #(
     reg signed [data_width - 1 : 0] ch_regs [n_channels - 1 : 0];
 	reg signed [data_width - 1 : 0] regs 	[n_blocks * n_registers - 1 : 0];
 	
+	reg signed [data_width - 1 : 0] memory [memory_size - 1 : 0];
+	
+	reg signed [data_width - 1 : 0] mem_write_val;
+	
+	reg [$clog2(memory_size) - 1 : 0] mem_write_addr;
+    reg [$clog2(memory_size) - 1 : 0] mem_fetch_addr;
+    
+    reg signed [data_width - 1 : 0] mem_fetch;
+    
+    reg mem_write = 0;
+	
 	reg [$clog2(n_blocks) - 1 : 0] last_block = 0;
 	
 	reg signed [data_width - 1 : 0] work;
@@ -173,6 +209,10 @@ module dsp_core #(
 	
 	reg [15:0] cycle_ctr = 0;
 	
+	reg [2 * data_width - 1 : 0] accumulator;
+	
+	wire [2 * data_width - 1 : 0] accumulator_sat = (accumulator > sat_max) ? sat_max : ((accumulator < sat_min) ? sat_min : accumulator);
+	
 	integer i;
 	always @(posedge clk) begin
 		wait_one <= 0;
@@ -181,6 +221,7 @@ module dsp_core #(
 		instr 		<= instrs	[current_block];
 		reg_fetch 	<= regs		[reg_fetch_addr];
 		ch_fetch 	<= ch_regs	[ch_fetch_addr];
+		mem_fetch 	<= memory	[mem_fetch_addr];
 		
 		if (command_instr_write) begin
 			instrs[command_block_target] <= command_instr_write_val;
@@ -192,6 +233,10 @@ module dsp_core #(
 		if (command_reg_write & ~ command_reg_write_prev)
 			command_reg_write_rose <= 1;
 		
+		if (mem_write) begin
+			memory[mem_write_addr] <= mem_write_val;
+		end
+		
 		if (reg_write) begin
 			regs[reg_write_addr] <= reg_write_val;
 		end
@@ -202,6 +247,7 @@ module dsp_core #(
 		
 		ch_write  <= 0;
 		reg_write <= 0;
+		mem_write <= 0;
 		
 		if (state != `CORE_STATE_READY)
 			cycle_ctr <= cycle_ctr + 1;
@@ -385,9 +431,9 @@ module dsp_core #(
 							ret_state <= `CORE_STATE_MUL_1;
 						end
 
-						`BLOCK_INSTR_MAC: begin
+						`BLOCK_INSTR_MAD: begin
 							state <= `CORE_STATE_FETCH_SRC_B;
-							ret_state <= `CORE_STATE_MAC_1;
+							ret_state <= `CORE_STATE_MAD_1;
 						end
 
 						`BLOCK_INSTR_ABS: begin
@@ -395,9 +441,9 @@ module dsp_core #(
 							state <= `CORE_STATE_FINISH_BLOCK;
 						end
 						
-						`BLOCK_INSTR_GW: begin
+						`BLOCK_INSTR_SAVE: begin
 							state <= `CORE_STATE_FETCH_SRC_B;
-							ret_state <= `CORE_STATE_GW_1;
+							ret_state <= `CORE_STATE_SAVE_1;
 						end
 						
 						`BLOCK_INSTR_MOV: begin
@@ -418,6 +464,22 @@ module dsp_core #(
 
 						`BLOCK_INSTR_DELAY: begin
 							//bleh
+						end
+						
+						`BLOCK_INSTR_MACZ: begin
+							accumulator <= 0;
+							state <= `CORE_STATE_FETCH_SRC_B;
+							ret_state <= `CORE_STATE_MAD_1;
+						end
+						
+						`BLOCK_INSTR_MAC: begin
+							state <= `CORE_STATE_FETCH_SRC_B;
+							ret_state <= `CORE_STATE_MAD_1;
+						end
+						
+						`BLOCK_INSTR_MOV_ACC: begin
+							work <= accumulator_sat[data_width - 1 : 0];
+							state <= `CORE_STATE_FINISH_BLOCK;
 						end
 					endcase
 				end
@@ -458,26 +520,26 @@ module dsp_core #(
 					state <= `CORE_STATE_FINISH_BLOCK;
 				end
 
-				`CORE_STATE_MAC_1: begin
+				`CORE_STATE_MAD_1: begin
 					state <= `CORE_STATE_FETCH_SRC_C;
-					ret_state <= `CORE_STATE_MAC_2;
+					ret_state <= `CORE_STATE_MAD_2;
 				end
 				
-				`CORE_STATE_MAC_2: begin
+				`CORE_STATE_MAD_2: begin
 					mul_req_a <= src_a_latched;
 					mul_req_b <= src_b_latched;
 					
-					state <= `CORE_STATE_MAC_3;
+					state <= `CORE_STATE_MAD_3;
 				end
 				
-				`CORE_STATE_MAC_3: begin
+				`CORE_STATE_MAD_3: begin
 					summand_a <= mul_result_final;
 					summand_b <= src_c_latched;
 					
-					state <= `CORE_STATE_MAC_4;
+					state <= `CORE_STATE_MAD_4;
 				end
 				
-				`CORE_STATE_MAC_4: begin
+				`CORE_STATE_MAD_4: begin
 					work <= sum_final;
 					state <= `CORE_STATE_FINISH_BLOCK;
 				end
@@ -490,13 +552,24 @@ module dsp_core #(
 					
 				end
 				
-				`CORE_STATE_GW_1: begin
-					reg_write_addr 	<= src_a_latched[$clog2(n_blocks) + `BLOCK_REG_ADDR_WIDTH - 1 : 0];
-					reg_write_val 	<= src_b_latched;
-					reg_write 		<= 1;
+				`CORE_STATE_SAVE_1: begin
+					mem_write_addr 	<= res_addr[$clog2(memory_size) - 1 : 0];
+					mem_write_val 	<= src_b_latched;
+					mem_write 		<= 1;
 					state <= `CORE_STATE_CONTINUE;
 				end
-
+				
+				`CORE_STATE_MAC_1: begin
+					mul_req_a <= src_a_latched;
+					mul_req_b <= src_b_latched;
+					
+					state <= `CORE_STATE_MAC_2;
+				end
+				
+				`CORE_STATE_MAC_2: begin
+					accumulator <= accumulator + mul_result_shifted;
+					state <= `CORE_STATE_CONTINUE;
+				end
 			endcase
 		end
 	end

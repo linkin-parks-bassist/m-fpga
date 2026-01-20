@@ -1,3 +1,4 @@
+`include "instr_dec.vh"
 `include "block.vh"
 `include "lut.vh"
 

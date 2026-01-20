@@ -7,7 +7,10 @@
 #include <cstring>
 #include <iostream>
 #include "math.h"
-#include "sim_io.h"
+
+#include "sim_main.h"
+
+sim_io_state io;
 
 int spi_enqueue(sim_io_state *io, uint8_t byte)
 {
@@ -68,7 +71,7 @@ void sim_io_init(sim_io_state *io)
 	io->i2s_skip = 1;
 }
 
-int sim_io_update(Vtop *dut, sim_io_state *io)
+int sim_io_update(sim_io_state *io)
 {
 	if (!dut || !io)
 		return 1;
@@ -81,7 +84,7 @@ int sim_io_update(Vtop *dut, sim_io_state *io)
 	{
 		if (io->spi_sending)
 		{
-			if (io->sck_counter == SCK_RATE - 1)
+			if (io->sck_counter == (SCK_RATE - 1) / 2)
 			{
 				if (!io->sck)
 				{
@@ -90,32 +93,40 @@ int sim_io_update(Vtop *dut, sim_io_state *io)
 					
 					io->spi_bit++;
 				}
-				else if (io->spi_bit == 8)
-				{
-					io->spi_sending = 0;
-					io->spi_bit = 0;
-					io->cs = 1;
-				}
-				
-				io->sck_counter = 0;
-				io->sck = !io->sck;
 			}
-			else
+			else if (io->sck_counter == SCK_RATE - 1)
 			{
-				io->sck_counter++;
+				io->sck = !io->sck;
+				
+				if (!io->sck)
+				{
+					if (io->spi_bit == 8)
+					{
+						io->spi_sending = 0;
+						io->spi_bit = 0;
+						io->cs = 1;
+						io->sck = 1;
+					}
+					
+				}
 			}
 		}
 		else
 		{
-			if (dut->cs && spi_waiting(io))
+			if (io->sck_counter == SCK_RATE - 1)
 			{
-				io->spi_sending = 1;
-				io->cs  = 0;
-				io->sck = 0;
-				
-				io->spi_byte = spi_get(io);
+				if (dut->cs && spi_waiting(io))
+				{
+					io->spi_sending = 1;
+					io->cs  = 0;
+					io->sck = 0;
+					
+					io->spi_byte = spi_get(io);
+				}
 			}
 		}
+		
+		io->sck_counter = (io->sck_counter + 1) % SCK_RATE;
 	}
 	
 	if (bclk_edge == 1)
@@ -165,12 +176,8 @@ int sim_io_update(Vtop *dut, sim_io_state *io)
 	return 0;
 }
 
-int sim_io_apply(Vtop *dut, sim_io_state *io)
+
+int spi_send(uint8_t byte)
 {
-	if (!dut || !io)
-		return 1;
-	
-	
-	
-	return 0;
+	return spi_enqueue(&io, byte);
 }

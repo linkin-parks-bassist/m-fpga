@@ -38,14 +38,20 @@ typedef struct {
 	int spi_write_head;
 	
 	int spi_sending;
+	
+	int spi_cooldown;
 } sim_io_state;
 
 void sim_io_init(sim_io_state *io);
 
 int spi_enqueue(sim_io_state *io, uint8_t byte);
 
-int io_update(Vtop *dut, sim_io_state *io);
+int io_update(sim_io_state *io);
 
-int sim_io_update(Vtop *dut, sim_io_state *io);
+int sim_io_update(sim_io_state *io);
+
+int spi_send(uint8_t byte);
+
+extern sim_io_state io;
 
 #endif

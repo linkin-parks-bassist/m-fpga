@@ -421,11 +421,6 @@ module control_unit_seq
 							ret_state <= `CONTROLLER_STATE_SET_OUTPUT_GAIN;
 						end
 
-						`COMMAND_SET_OUTPUT_GAIN: begin
-							reset_pipeline[target_pipeline] <= 1;
-							state <= `CONTROLLER_STATE_READY;
-						end
-
 						default: begin
 							invalid <= 1;
 							state <= `CONTROLLER_STATE_READY;

@@ -191,36 +191,36 @@ module dsp_engine_seq
 		);
 
     control_unit_seq #(.n_blocks(n_blocks), .data_width(data_width), .n_block_registers(n_block_registers)) controller
-    (
-        .clk(clk),
-        .reset(reset),
-        
-        .in_byte(command_byte),
-        .in_ready(inp_fifo_nonempty),
-        .next(inp_fifo_next),
-        
-        .block_target(block_target),
-        .reg_target(reg_target),
-        .instr_out(ctrl_instr_out),
-        .data_out(ctrl_data_out),
-        
-        .block_instr_write(block_instr_write),
-        .block_reg_write(block_reg_write),
-        .block_reg_update(block_reg_update),
-        
-        .reg_write_ack(reg_write_acks),
-        
-        .alloc_sram_delay(alloc_sram_delay),
-        
-        .swap_pipelines(swap_pipelines),
-        .pipelines_swapping(pipelines_swapping),
-        .reset_pipeline(reset_pipeline),
-        
-        .set_input_gain(set_input_gain),
-        .set_output_gain(set_output_gain),
-        
-        .invalid(invalid_command)
-    );
+		(
+			.clk(clk),
+			.reset(reset),
+			
+			.in_byte(command_byte),
+			.in_ready(inp_fifo_nonempty),
+			.next(inp_fifo_next),
+			
+			.block_target(block_target),
+			.reg_target(reg_target),
+			.instr_out(ctrl_instr_out),
+			.data_out(ctrl_data_out),
+			
+			.block_instr_write(block_instr_write),
+			.block_reg_write(block_reg_write),
+			.block_reg_update(block_reg_update),
+			
+			.reg_write_ack(reg_write_acks),
+			
+			.alloc_sram_delay(alloc_sram_delay),
+			
+			.swap_pipelines(swap_pipelines),
+			.pipelines_swapping(pipelines_swapping),
+			.reset_pipeline(reset_pipeline),
+			
+			.set_input_gain(set_input_gain),
+			.set_output_gain(set_output_gain),
+			
+			.invalid(invalid_command)
+		);
 	
     mixer #(.data_width(data_width), .gain_shift(5)) mixerr (
         .clk(clk),
