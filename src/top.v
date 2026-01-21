@@ -103,15 +103,32 @@ module top
     reg [31:0] ctr = 0;
     reg led_reg = 0;
 
-    wire [7:0] spi_in;;
+    wire [7:0] spi_in;
 
     reg [4:0] spi_byte_ctr = 0;
+
+
+    reg spi_valid_blinker = 0;
+    reg [31:0] spi_valid_blink_ctr = 0;
 
     always  @(posedge sys_clk) begin
 		tick_engine <= 0;
     
-        if (spi_in_valid)
+        if (spi_valid_blinker) begin
+            if (|spi_valid_blink_ctr) begin
+                spi_valid_blink_ctr <= spi_valid_blink_ctr - 1;
+            end else begin
+                spi_valid_blinker <= 0;
+            end
+        end
+
+        if (spi_in_valid) begin
             spi_capture <= spi_in;
+            if (!spi_valid_blinker) begin
+                spi_valid_blinker <= 1;
+                spi_valid_blink_ctr <= 50500000;
+            end
+        end
 
         if (ctr == 56250000) begin
             led_reg <= ~led_reg;
@@ -135,10 +152,15 @@ module top
     reg [7:0] spi_capture;
 
     // LED assignments (example - you can modify these)
-    assign led0 = ~(~cs);
-    //assign led1 = ~0;
+    /*assign led0 = ~(~cs);
+    assign led1 = ~0;
     assign led3 = ~(|sample_in_abs[15:12]);
-    assign led4 = ~(|sample_out_abs[15:12]);
+    assign led4 = ~(|sample_out_abs[15:12]);*/
+
+    assign led0 = ~(spi_valid_blinker);
+    assign led1 = ~(|spi_capture[3:2]);
+    assign led3 = ~(|spi_capture[5:4]);
+    assign led4 = ~(|spi_capture[7:6]);
 
     localparam sample_size = 16;
 
@@ -188,7 +210,7 @@ module top
         
             .fifo_count(fifo_count),
 
-            .current_pipeline(led1)
+            .current_pipeline()
         );
 
     sync_spi_slave spi

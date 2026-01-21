@@ -1,4 +1,5 @@
 `include "controller.vh"
+`include "instr_dec.vh"
 `include "block.vh"
 
 module control_unit
