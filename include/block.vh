@@ -1,30 +1,3 @@
-`define BLOCK_INSTR_NOP 	0
-`define BLOCK_INSTR_ADD 	1
-`define BLOCK_INSTR_SUB 	2
-`define BLOCK_INSTR_LSH 	3
-`define BLOCK_INSTR_RSH 	4
-`define BLOCK_INSTR_ARSH 	5
-`define BLOCK_INSTR_MUL 	6
-`define BLOCK_INSTR_MAC		7
-`define BLOCK_INSTR_ABS		8
-`define BLOCK_INSTR_BIQ_DF1	9
-`define BLOCK_INSTR_LUT		10
-`define BLOCK_INSTR_ENVD 	11
-`define BLOCK_INSTR_DELAY 	12
-`define BLOCK_INSTR_GW 		13
-`define BLOCK_INSTR_MOV		14
-`define BLOCK_INSTR_CLAMP	15
-
-`define BLOCK_OP_TYPE_WIDTH 3
-
-// Note: ensure 4 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH + 3 < `BLOCK_INSTR_WIDTH
-// and max($clog2(n_channels), $clog2(n_registers)) <= `BLOCK_REG_ADDR_WIDTH
-`define BLOCK_INSTR_WIDTH 		32
-
-`define BLOCK_INSTR_OP_WIDTH 	5
-`define BLOCK_REG_ADDR_WIDTH   	4
-`define BLOCK_PMS_WIDTH			5
-
 // Block FSM states
 
 `define BLOCK_STATE_BEGIN 		0

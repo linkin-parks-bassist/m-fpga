@@ -1,5 +1,4 @@
 verilator  src/pipeline.v 			\
-		   src/block.v 				\
 		   src/lut.v 				\
 		   src/pipeline_seq.v 		\
 		   src/rr_arbiter.v 		\
@@ -14,6 +13,6 @@ verilator  src/pipeline.v 			\
 		   src/top.v 				\
 		   src/seq.v 				\
 		   src/engine_seq.v 		\
-		   src/biquad.v				\
-	--top-module top  -Wno-fatal -Isrc -Iinclude -cc --trace-fst -exe verilator/sim_io.cpp verilator/sim_main.cpp \
+		   src/instr_dec.v 			\
+	--top-module top  -Wno-fatal -Isrc -Iinclude -cc -CFLAGS -fpermissive -CFLAGS -Wno-error --trace-fst -exe verilator/sim_io.cpp verilator/sim_ctrl.cpp verilator/sim_main.cpp \
 	&& make -C obj_dir -j -f Vtop.mk Vtop

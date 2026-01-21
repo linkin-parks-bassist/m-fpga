@@ -358,15 +358,24 @@ int main(int argc, char** argv)
 		tick();
 
 	int samples_processed = 0;
+	
+	printf("Starting...\n");
+	
     for (int i = 0; i < (1 << 26); i++)
 	{
 		tick();
 		
-		if (i == (1 << 25))
+		if (i == (1 << 24))
 		{
-			printf("Sending pipeline...\n");
 			pl = new_pipeline();
-			eff = create_amplifier_effect(-6.0);
+			
+			eff = create_biquad_effect(
+				 0.065323,
+				 0.0,
+				-0.065323,
+				-1.748845,
+				 0.869354
+			);
 			pipeline_add_effect(pl, eff);
 			
 			tfseq = pipeline_transfer_sequence(pl);
@@ -375,6 +384,9 @@ int main(int argc, char** argv)
 			while (spi_send(COMMAND_SWAP_PIPELINES) == 1)
 				tick();
 		}
+		
+		if (samples_processed % 128 == 0)
+			printf("\rSamples processed: %d/%d (%.2f%%)", samples_processed, n_samples, 100.0 * (float)samples_processed/(float)n_samples);
 		
 		if (io.i2s_ready)
 		{
@@ -393,6 +405,8 @@ int main(int argc, char** argv)
 		}
     }
 
+	printf("\r\n");
+	
     #ifdef DUMP_WAVEFORM
 	tfp->close();
 	delete tfp;

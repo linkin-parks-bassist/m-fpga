@@ -26,7 +26,7 @@
 
 #define BLOCK_INSTR_OP_TYPE_START 	(4 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH)
 #define BLOCK_INSTR_PMS_START		(BLOCK_INSTR_OP_TYPE_START + 5)
-#define SHIFT_WIDTH 4
+#define SHIFT_WIDTH 				5
 
 #define BLOCK_RES_ADDR_WIDTH	8
 
@@ -105,6 +105,9 @@ typedef struct
 	int reg;
 	int format;
 	
+	int literal;
+	int16_t literal_value;
+	
 	derived_quantity_expr *expr;
 } block_register;
 
@@ -143,11 +146,23 @@ pipeline *new_pipeline();
 int pipeline_add_effect(pipeline *pl, effect *eff);
 effect *new_effect();
 effect *create_amplifier_effect(float gain);
+effect *create_biquad_effect(float b0, float b1, float b2, float a1, float a2);
 
 transfer_sequence pipeline_transfer_sequence(pipeline *pl);
 
 int send_transfer_sequence(transfer_sequence seq);
 
 int16_t float_to_q_nminus1(float x, int shift);
+
+int effect_add_const_mul_rc(effect *eff, int src_a, float v, int dest);
+int effect_add_mad_ccc(effect *eff, int src_a, int src_b, int src_c, int dest);
+int effect_add_mad_ccr(effect *eff, int src_a, float v, int src_c, int dest);
+int effect_add_macz_cc(effect *eff, int src_a, int src_b);
+int effect_add_macz_rc(effect *eff, int src_a, float v);
+int effect_add_mac_cc(effect *eff, int src_a, int src_b);
+int effect_add_mac_rc(effect *eff, int src_a, float v);
+int effect_add_load(effect *eff, int addr, int dest);
+int effect_add_save(effect *eff, int src_a, int addr);
+int effect_add_mov_acc(effect *eff, int dest);
 
 #endif

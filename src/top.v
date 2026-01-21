@@ -2,7 +2,7 @@ module top
 	#(
 		parameter n_blocks 			= 255,
 		parameter n_block_registers = 4,
-		parameter n_channels 		= 4,
+		parameter n_channels 		= 16,
 		parameter data_width 		= 16,
 		parameter n_sram_banks 		= 8,
 		parameter sram_bank_size 	= 1024,

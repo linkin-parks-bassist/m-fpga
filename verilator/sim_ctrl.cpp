@@ -26,7 +26,7 @@ uint32_t encode_type_a_instr(int opcode, int src_a, int src_b, int src_c, int de
 		| ((uint32_t)!!c_reg 	<< (BLOCK_INSTR_OP_TYPE_START + 2))
 		| ((uint32_t)!!dest_reg	<< (BLOCK_INSTR_OP_TYPE_START + 3))
 		| ((uint32_t)(shift & IBM(SHIFT_WIDTH)) << (BLOCK_INSTR_PMS_START))
-		| ((uint32_t)!!sat   << (BLOCK_INSTR_OP_TYPE_START + 4));
+		| ((uint32_t)!!sat   << (BLOCK_INSTR_OP_TYPE_START + SHIFT_WIDTH + 1));
 }
 
 uint32_t encode_type_b_instr(int opcode, int src_a, int src_b, int dest, int res_addr)
@@ -105,9 +105,9 @@ block_instr unpack_instr_code(uint32_t code)
 			result.src_c_reg = range_bits(code, 1, BLOCK_INSTR_OP_TYPE_START + 2);
 			result.dest_reg  = range_bits(code, 1, BLOCK_INSTR_OP_TYPE_START + 3);
 			
-			result.shift = range_bits(code, 4, BLOCK_INSTR_PMS_START);
+			result.shift = range_bits(code, SHIFT_WIDTH, BLOCK_INSTR_PMS_START);
 			
-			result.sat = range_bits(code, 1, BLOCK_INSTR_OP_TYPE_START + 4);
+			result.sat = range_bits(code, 1, BLOCK_INSTR_PMS_START + SHIFT_WIDTH + 1);
 			break;
 		
 		case INSTR_FORMAT_B:
@@ -153,6 +153,9 @@ char *opcode_to_string(uint32_t opcode)
 		case BLOCK_INSTR_LOAD: return (char*)"BLOCK_INSTR_LOAD";
 		case BLOCK_INSTR_MOV: return (char*)"BLOCK_INSTR_MOV";
 		case BLOCK_INSTR_CLAMP: return (char*)"BLOCK_INSTR_CLAMP";
+		case BLOCK_INSTR_MACZ: return (char*)"BLOCK_INSTR_MACZ";
+		case BLOCK_INSTR_MAC: return (char*)"BLOCK_INSTR_MAC";
+		case BLOCK_INSTR_MOV_ACC: return (char*)"BLOCK_INSTR_MOV_ACC";
 	}
 	
 	return NULL;
@@ -303,10 +306,6 @@ int block_register_write_bytes(int block_no, block_register reg, uint8_t *out, i
 	if (N_BLOCKS > 255 && max < 6)
 		return 0;
 	
-	float v = eval_derived_quantity_expr(reg.expr);
-	
-	int16_t s = float_to_q_nminus1(v, reg.format);
-	
 	int pos = 0;
 	out[pos++] = COMMAND_WRITE_BLOCK_REG;
 	
@@ -316,6 +315,19 @@ int block_register_write_bytes(int block_no, block_register reg, uint8_t *out, i
 	out[pos++] = block_no & 0x00FF;
 	
 	out[pos++] = reg.reg;
+	
+	int16_t s;
+	
+	if (reg.literal)
+	{
+		s = reg.literal_value;
+	}
+	else
+	{
+		float v = eval_derived_quantity_expr(reg.expr);
+		
+		s = float_to_q_nminus1(v, reg.format);
+	}
 	
 	out[pos++] = (s & 0xFF00) >> 8;
 	out[pos++] = (s & 0x00FF);
@@ -480,9 +492,24 @@ block_register *new_block_register(int reg, int format, derived_quantity_expr *d
 {
 	block_register *result = (block_register*)malloc(sizeof(block_register));
 	
+	result->literal = 0;
 	result->reg = reg;
 	result->format = format;
 	result->expr = dqe;
+	
+	return result;
+}
+
+block_register *new_block_register_literal(int reg, int16_t literal_value)
+{
+	block_register *result = (block_register*)malloc(sizeof(block_register));
+	
+	result->literal = 1;
+	result->literal_value = literal_value;
+	result->reg = reg;
+	result->format = 0;
+	
+	result->expr = NULL;
 	
 	return result;
 }
@@ -768,6 +795,257 @@ int effect_set_reg(effect *eff, int block_no, int reg, int format, char *expr)
 	return 0;
 }
 
+int effect_add_add_cc(effect *eff, int src_a, int src_b, int dest)
+{
+	if (!eff)
+		return 1;
+	
+	block *add_block = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_ADD, src_a, src_b, 0, dest, 0, 0, 0, 0, 0, 0));
+	effect_add_block(eff, add_block);
+	
+	return 0;
+}
+
+int effect_add_mul_cc(effect *eff, int src_a, int src_b, int dest)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MUL, src_a, src_b, 0, dest, 0, 0, 0, 0, 0, 0));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+derived_quantity_expr *const_dqe(float v)
+{
+	derived_quantity_expr *res = (derived_quantity_expr*)malloc(sizeof(derived_quantity_expr));
+	res->call = DQE_CALL_CONST;
+	res->value = v;
+	res->sub_exprs = NULL;
+	return res;
+}
+
+int effect_add_const_mul_rc(effect *eff, int src_a, float v, int dest)
+{
+	if (!eff)
+		return 1;
+	
+	if (abs(v) > (float)(1 << SHIFT_WIDTH))
+		return 2;
+	
+	float fmt = 1.0;
+	int shift = 0;
+	
+	while (abs(v) > fmt)
+	{
+		fmt *= 2.0;
+		shift++;
+	}
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MUL, src_a, 0, 0, dest, 0, 1, 0, 0, shift, 0));
+	block_add_register(blk, 0, new_block_register(0, shift, const_dqe(v)));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_mad_ccc(effect *eff, int src_a, int src_b, int src_c, int dest)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MUL, src_a, src_b, src_c, dest, 0, 0, 0, 0, 0, 0));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_mad_ccr(effect *eff, int src_a, float v, int src_c, int dest)
+{
+	if (!eff)
+		return 1;
+	
+	if (abs(v) > (float)(1 << SHIFT_WIDTH))
+		return 2;
+	
+	float fmt = 1.0;
+	int shift = 0;
+	
+	while (abs(v) > fmt)
+	{
+		fmt *= 2.0;
+		shift++;
+	}
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MUL, src_a, 0, src_c, 0, 0, 1, 0, 0, shift, 0));
+	block_add_register(blk, 0, new_block_register(0, shift, const_dqe(v)));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_macz_cc(effect *eff, int src_a, int src_b)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MACZ, src_a, src_b, 0, 0, 0, 0, 0, 0, 0, 0));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_macz_rc(effect *eff, int src_a, float v)
+{
+	if (!eff)
+		return 1;
+	
+	if (abs(v) > (float)(1 << SHIFT_WIDTH))
+		return 2;
+	
+	float fmt = 1.0;
+	int shift = 0;
+	
+	while (abs(v) > fmt)
+	{
+		fmt *= 2.0;
+		shift++;
+	}
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MACZ, src_a, 0, 0, 0, 0, 1, 0, 0, 0, 0));
+	block_add_register(blk, 0, new_block_register(0, shift, const_dqe(v)));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_mac_cc(effect *eff, int src_a, int src_b)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MAC, src_a, src_b, 0, 0, 0, 0, 0, 0, 0, 0));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_mac_cc_ns(effect *eff, int src_a, int src_b)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MAC, src_a, src_b, 0, 0, 0, 0, 0, 0, 0, 1));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_mac_rc(effect *eff, int src_a, float v)
+{
+	if (!eff)
+		return 1;
+	
+	if (abs(v) > (float)(1 << SHIFT_WIDTH))
+		return 2;
+	
+	float fmt = 1.0;
+	int shift = 0;
+	
+	while (abs(v) > fmt)
+	{
+		fmt *= 2.0;
+		shift++;
+	}
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MAC, src_a, 0, 0, 0, 0, 1, 0, 0, shift, 0));
+	block_add_register(blk, 0, new_block_register(0, shift, const_dqe(v)));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_mac_rc_ns(effect *eff, int src_a, float v)
+{
+	if (!eff)
+		return 1;
+	
+	if (abs(v) > (float)(1 << SHIFT_WIDTH))
+		return 2;
+	
+	float fmt = 1.0;
+	int shift = 0;
+	
+	while (abs(v) > fmt)
+	{
+		fmt *= 2.0;
+		shift++;
+	}
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MAC, src_a, 0, 0, 0, 0, 1, 0, 0, shift, 1));
+	block_add_register(blk, 0, new_block_register(0, shift, const_dqe(v)));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_mac_rc_ns_sh(effect *eff, int src_a, float v, int shift)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MAC, src_a, 0, 0, 0, 0, 1, 0, 0, shift, 1));
+	block_add_register(blk, 0, new_block_register(0, shift, const_dqe(v)));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_load(effect *eff, int addr, int dest)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_b_str(BLOCK_INSTR_LOAD, 0, 0, dest, addr));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_save(effect *eff, int src_a, int addr)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_b_str(BLOCK_INSTR_SAVE, src_a, 0, 0, addr));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_mov_acc(effect *eff, int dest)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MOV_ACC, 0, 0, 0, dest, 0, 0, 0, 0, 0, 0));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
+int effect_add_mov_acc_sh(effect *eff, int dest, int shift)
+{
+	if (!eff)
+		return 1;
+	
+	block *blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MOV_ACC, 0, 0, 0, dest, 0, 0, 0, 0, 1, 0));
+	effect_add_block(eff, blk);
+	
+	return 0;
+}
+
 effect *create_amplifier_effect(float gain)
 {
 	effect *amp = new_effect();
@@ -779,6 +1057,118 @@ effect *create_amplifier_effect(float gain)
 	effect_set_reg(amp, 0, 0, 4, "pow 10 (/ gain 20)");
 	
 	return amp;
+}
+
+#if 0
+
+void load_biquad(int base_block,
+                 float b0, float b1, float b2,
+                 float a1, float a2)
+{
+	// channels:
+	// ch0 = x[n]
+	// ch1 = x[n]
+	// ch2 = x[n-1]
+	// ch3 = x[n-2]
+	// ch4 = y[n-1]
+	// ch5 = y[n-2]
+	
+	// move previous sample's x[n-1] to ch3
+    write_block_instr(base_block + 0,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 2, 0, 0, 3, 0, 0, 0, 0, 0, 1));
+    // move previous sample's x[n] to ch2
+    write_block_instr(base_block + 1,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 1, 0, 0, 2, 0, 0, 0, 0, 0, 1));
+    // copy x[n] to ch1
+    write_block_instr(base_block + 2,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] = b0*ch0
+    write_block_register(base_block + 3, 0, float_to_q_nminus1(b0, 1));
+    write_block_instr(base_block + 3,
+        BLOCK_INSTR_S(BLOCK_INSTR_MUL, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] + b1*x[n-1] = b1*ch2 + ch0
+    write_block_register(base_block + 4, 0, float_to_q_nminus1(b1, 1));
+    write_block_instr(base_block + 4,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAD, 2, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] + b1*x[n-1] + b2*x[n-1] = b2*ch3 + ch0
+    write_block_register(base_block + 5, 0, float_to_q_nminus1(b2, 1));
+    write_block_instr(base_block + 5,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAD, 3, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] + b1*x[n-1] + b2*x[n-1] - a1y[n-1] = -a1*ch4 + ch0
+    write_block_register(base_block + 6, 0, float_to_q_nminus1(-a1, 1));
+    write_block_instr(base_block + 6,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAD, 4, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// ch0 = b0*x[n] + b1*x[n-1] + b2*x[n-1] - a1y[n-1] - a2y[n-2] = -a2*ch5 + ch0
+    write_block_register(base_block + 7, 0, float_to_q_nminus1(-a2, 1));
+    write_block_instr(base_block + 7,
+        BLOCK_INSTR_S(BLOCK_INSTR_MAD, 5, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+
+	// clamp to [-1, 1)
+	write_block_instr(base_block + 8,
+        BLOCK_INSTR_S(BLOCK_INSTR_CLAMP, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0));
+       
+    // shift back to format
+	write_block_instr(base_block + 9,
+        BLOCK_INSTR_S(BLOCK_INSTR_LSH, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
+
+	// move previous sample's y[n-1] to ch5
+    write_block_instr(base_block + 10,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 4, 0, 0, 5, 0, 0, 0, 0, 0, 0));
+    // move y[n] to ch4
+    write_block_instr(base_block + 11,
+        BLOCK_INSTR_S(BLOCK_INSTR_MOV, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0));
+}
+
+#endif
+
+effect *create_biquad_effect(float b0, float b1, float b2, float a1, float a2)
+{
+	effect *eff = new_effect();
+	
+	// load state from memory
+	effect_add_load(eff, 0, 1); // ch1 = x1
+	effect_add_load(eff, 1, 2); // ch2 = x2
+	effect_add_load(eff, 2, 3); // ch3 = y1
+	effect_add_load(eff, 3, 4); // ch4 = y2
+	
+	effect_add_save(eff, 0, 0); // save (now) x0 to be (next time) x1
+	effect_add_save(eff, 1, 1); // save (now) x1 to be (next time) x2
+	effect_add_save(eff, 3, 3); // save (now) y1 to be (next time) y2
+	
+	block *blk;
+	
+	effect_add_macz_rc	(eff, 0,  b0); // clear accumulator; add b0*x0
+	blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MACZ, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+	block_add_register(blk, 0, new_block_register_literal(0, float_to_q_nminus1(b0, 2)));
+	effect_add_block(eff, blk);
+	
+	blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MAC, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+	block_add_register(blk, 0, new_block_register_literal(0, float_to_q_nminus1(b1, 2)));
+	effect_add_block(eff, blk);
+	
+	blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MAC, 2, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+	block_add_register(blk, 0, new_block_register_literal(0, float_to_q_nminus1(b2, 2)));
+	effect_add_block(eff, blk);
+	
+	blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MAC, 3, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+	block_add_register(blk, 0, new_block_register_literal(0, float_to_q_nminus1(-a1, 2)));
+	effect_add_block(eff, blk);
+	
+	blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MAC, 4, 0, 0, 0, 0, 1, 0, 0, 0, 1));
+	block_add_register(blk, 0, new_block_register_literal(0, float_to_q_nminus1(-a2, 2)));
+	effect_add_block(eff, blk);
+	
+	blk = new_block_with_instr(block_instr_type_a_str(BLOCK_INSTR_MOV_ACC, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0));
+	effect_add_block(eff, blk);
+	
+	effect_add_save(eff, 0, 2); // save (now) y0 to be (next time) y1
+	
+	return eff;
 }
 
 transfer_sequence new_transfer_sequence()
@@ -839,7 +1229,7 @@ int read_out_transfer_sequence(transfer_sequence tfseq)
 	{
 		byte = bytes[i];
 		
-		printf("\tByte %d: 0x%04x. ", i, byte);
+		printf("\tByte %s%d: 0x%02x = 0b%08b. ", (tfseq.len > 9 && i < 10) ? " " : "", i, byte, byte);
 		
 		switch (state)
 		{
@@ -923,12 +1313,12 @@ int read_out_transfer_sequence(transfer_sequence tfseq)
 				{
 					state = 0;
 					
-					value = (value << 8) | byte;
-					printf("Value: 0b%016b", value);
+					value |= byte;
+					printf("Value: 0b%016b", value & 0xFFFF);
 				}
 				else
 				{
-					value = (value << 8) | byte;
+					value = byte << 8;
 					ctr++;
 				}
 				break;
@@ -1000,10 +1390,8 @@ int send_transfer_sequence(transfer_sequence seq)
 	
 	read_out_transfer_sequence(seq);
 	
-	printf("Sending transfer sequence (length %d)\n", seq.len);
 	while (i < seq.len)
 	{
-		printf("\tByte %d = 0x%04x = 0b%08b\n", i, seq.buf[i], seq.buf[i]);
 		do 
 		{
 			ret_val = spi_send(seq.buf[i]);

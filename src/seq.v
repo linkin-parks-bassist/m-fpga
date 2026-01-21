@@ -150,8 +150,6 @@ module dsp_core #(
 	//
 	// Saturation and format compensation for muls
 	//
-	localparam integer MAX_SHIFT = 2 * data_width - 2;
-	localparam integer SHIFT_WIDTH = $clog2(MAX_SHIFT + 1);
 
 	// Arithmetic shift
 	wire signed [2 * data_width - 1 : 0] mul_result_shifted =
@@ -209,7 +207,7 @@ module dsp_core #(
 	
 	reg [15:0] cycle_ctr = 0;
 	
-	reg [2 * data_width - 1 : 0] accumulator;
+	reg signed [2 * data_width - 1 : 0] accumulator;
 	
 	wire [2 * data_width - 1 : 0] accumulator_sat = (accumulator > sat_max) ? sat_max : ((accumulator < sat_min) ? sat_min : accumulator);
 	
@@ -442,8 +440,13 @@ module dsp_core #(
 						end
 						
 						`BLOCK_INSTR_SAVE: begin
-							state <= `CORE_STATE_FETCH_SRC_B;
-							ret_state <= `CORE_STATE_SAVE_1;
+							state <= `CORE_STATE_SAVE_1;
+						end
+						
+						`BLOCK_INSTR_LOAD: begin
+							mem_fetch_addr <= res_addr;
+							state <= `CORE_STATE_LOAD_1;
+							wait_one <= 1;
 						end
 						
 						`BLOCK_INSTR_MOV: begin
@@ -469,12 +472,12 @@ module dsp_core #(
 						`BLOCK_INSTR_MACZ: begin
 							accumulator <= 0;
 							state <= `CORE_STATE_FETCH_SRC_B;
-							ret_state <= `CORE_STATE_MAD_1;
+							ret_state <= `CORE_STATE_MAC_1;
 						end
 						
 						`BLOCK_INSTR_MAC: begin
 							state <= `CORE_STATE_FETCH_SRC_B;
-							ret_state <= `CORE_STATE_MAD_1;
+							ret_state <= `CORE_STATE_MAC_1;
 						end
 						
 						`BLOCK_INSTR_MOV_ACC: begin
@@ -554,9 +557,16 @@ module dsp_core #(
 				
 				`CORE_STATE_SAVE_1: begin
 					mem_write_addr 	<= res_addr[$clog2(memory_size) - 1 : 0];
-					mem_write_val 	<= src_b_latched;
+					mem_write_val 	<= src_a_latched;
 					mem_write 		<= 1;
 					state <= `CORE_STATE_CONTINUE;
+				end
+				
+				`CORE_STATE_LOAD_1: begin
+					if (!wait_one) begin
+						work <= mem_fetch;
+						state <= `CORE_STATE_FINISH_BLOCK;
+					end
 				end
 				
 				`CORE_STATE_MAC_1: begin
