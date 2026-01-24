@@ -206,9 +206,9 @@ module top
     assign led4 = ~(|sample_out_abs[15:12]);*/
 
     assign led0 = ~(current_pipeline);
-    assign led1 = ~(control_state[5]);
-    assign led3 = ~(control_state[6]);
-    assign led4 = ~(control_state[7]);
+    assign led1 = ~(~current_pipeline);
+    assign led3 = ~(control_state[0]);
+    assign led4 = ~(control_state[1]);
 
     wire [7:0] control_state;
 

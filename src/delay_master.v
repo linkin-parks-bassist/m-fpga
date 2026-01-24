@@ -27,7 +27,7 @@ module delay_master
 		output reg req_sram_write,
 		output reg [sram_addr_width - 1 : 0] req_sram_read_addr,
 		output reg [sram_addr_width - 1 : 0] req_sram_write_addr,
-		output reg [data_width 	  - 1 : 0] data_to_sram,
+		output reg [data_width 	    - 1 : 0] data_to_sram,
 		
 		input wire sram_read_ready,
 		input wire sram_write_ready,
@@ -61,7 +61,7 @@ module delay_master
 	reg  [sram_buffer_handle_width - 1 : 0] trunc_write_handle_latched;
 	
 	wire valid_read_handle  = ~(|read_req_handle [data_width - 1 : sram_buffer_handle_width]) & (trunc_read_handle  < sram_buffer_next_handle);
-	wire valid_write_handle = ~(|write_req_handle[data_width - 1 : sram_buffer_handle_width]) & (trunc_write_handle < sram_buffer_next_handle);
+	wire valid_write_handle = ~(|write_req_handle[data_width - 1 : sram_buffer_handle_width]) & (trunc_write_handle_latched < sram_buffer_next_handle);
 	
 	wire [sram_addr_width	- 1 : 0] read_req_arg_sram_addr;
 	wire [sram_addr_width	- 1 : 0] write_req_arg_sram_addr;
@@ -94,14 +94,19 @@ module delay_master
 	reg write_wait_one = 0;
 	
 	wire buffers_exhausted 		= (sram_buffer_next_handle >= (n_sram_buffers - 1));
-	wire alloc_req_size_pow2 	= ~|(alloc_size & (alloc_size - 1));
-	wire alloc_too_big			= ((sram_alloc_addr + alloc_size) >= sram_capacity);
+	wire alloc_req_size_pow2 	= ~|(alloc_size_latched & (alloc_size_latched - 1));
+	wire alloc_too_big			= ((sram_alloc_addr + alloc_size_latched) >= sram_capacity);
 
 	localparam data_sram_cmp_width = data_width > sram_addr_width ? data_width : sram_addr_width;
 	
 	wire [data_sram_cmp_width - 1 : 0] read_req_arg_ext 	= read_req_arg;
 	wire [data_sram_cmp_width - 1 : 0] read_buffer_size_ext = sram_buffer_sizes[trunc_read_handle];
 
+    reg allocating = 0;
+    reg [sram_addr_width - 1 : 0] alloc_size_latched;
+    reg [data_width - 1 : 0] write_req_arg_latched;
+
+    reg [2:0] write_state = 0;
 
 	always @(posedge clk) begin
 		invalid_read 	<= 0;
@@ -139,19 +144,26 @@ module delay_master
 		end
 		else begin
 			if (alloc_sram_req) begin
+                alloc_size_latched <= alloc_size;
+                allocating <= 1;
+            end
+
+            if (allocating) begin
 				if (buffers_exhausted || ~alloc_req_size_pow2 || alloc_too_big) begin
 					invalid_alloc <= 1;
+                    allocating <= 0;
 				end
 				else begin
 					sram_buffer_addrs[sram_buffer_next_handle] <= sram_alloc_addr;
-					sram_buffer_sizes[sram_buffer_next_handle] <= alloc_size;
+					sram_buffer_sizes[sram_buffer_next_handle] <= alloc_size_latched;
 					sram_buffer_posns[sram_buffer_next_handle] <= 0;
 					
 					sram_buffer_next_handle <= sram_buffer_next_handle + 1;
-					sram_alloc_addr <= sram_alloc_addr + alloc_size;
+					sram_alloc_addr <= sram_alloc_addr + alloc_size_latched;
+                    allocating <= 0;
 				end
 			end
-				
+
 			if (!state[0]) begin
 				if (!read_wait_one && read_req) begin
 					if (valid_read_handle) begin
@@ -185,39 +197,48 @@ module delay_master
 				end
 			end
 			
-			if (!state[1]) begin
-				if (!write_wait_one && write_req) begin
-					if (valid_write_handle) begin
-						req_sram_write_addr <= sram_buffer_addrs[trunc_write_handle] + sram_buffer_posns[trunc_write_handle];
-						data_to_sram 		<= write_req_arg;
+            case (write_state)
+                0: begin
+                    if (write_req) begin
+                        trunc_write_handle_latched <= trunc_write_handle;
+                        write_req_arg_latched <= write_req_arg;
+                        write_state <= 1;
+                    end
+                end
+
+                1: begin
+                    if (valid_write_handle) begin
+                        req_sram_write_addr <= sram_buffer_addrs[trunc_write_handle_latched] + sram_buffer_posns[trunc_write_handle_latched];
+						data_to_sram 		<= write_req_arg_latched;
 						req_sram_write 		<= 1;
 						
-						trunc_write_handle_latched <= trunc_write_handle;
-						
-						write_wait_one 	<= 1;
-						state[1] 		<= 1;
-						write_ready 	<= 0;
-					end
-					else begin
-						invalid_write <= 1;
-					end
-				end
-			end
-			else begin
-				if (write_wait_one) begin
-					write_wait_one <= 0;
-				end
-				else if (sram_write_ready || sram_write_invalid) begin
-					req_sram_write 	<= 0;
-					
-					state[1] 		<= 0;
-					write_ready 	<= 1;
-					invalid_write 	<= sram_write_invalid;
-					
-					sram_buffer_posns[trunc_write_handle_latched] <= next_buffer_pos;
-					write_wait_one <= 1;
-				end
-			end
+						write_state <= 2;
+                    end else begin
+                        invalid_write <= 1;
+                    end
+                end
+
+                2: begin
+                    write_state <= 3;
+                end
+
+                3: begin
+                    if (sram_write_ready || sram_write_invalid) begin
+                        req_sram_write 	<= 0;
+                        write_ready 	<= 1;
+                        invalid_write 	<= sram_write_invalid;
+                        
+                        sram_buffer_posns[trunc_write_handle_latched] <= next_buffer_pos;
+
+                        write_state <= 4;
+                    end
+                end
+
+                4: begin
+                    write_state <= 0;
+                end
+
+            endcase
 		end
 	end
 endmodule
