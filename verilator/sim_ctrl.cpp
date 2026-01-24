@@ -1042,7 +1042,7 @@ int m_effect_desc_add_register_val(m_effect_desc *eff, int block_no, int reg, in
 	
 	return m_dsp_block_add_register_val(eff->blocks[block_no], reg, bp);
 }
-
+/*
 int m_effect_desc_add_add_cc(m_effect_desc *eff, int src_a, int src_b, int dest)
 {
 	if (!eff)
@@ -1284,48 +1284,43 @@ int m_effect_desc_add_mov_acc_sh(m_effect_desc *eff, int dest, int shift)
 	
 	return NO_ERROR;
 }
-
+*/
 #define IBM(x) ((1u << (x)) - 1)
 #define range_bits(x, n, start) (((x) >> (start)) & IBM(n))
+#define place_bits(x, y, val) ((IBM((x)-(y)) & ((uint32_t)val)) << y) 
 
-uint32_t m_enc_dsp_block_type_a_instr(int opcode, int src_a, int src_b, int src_c, int dest,
-										 int a_reg, int b_reg, int c_reg, int dest_reg, int shift, int sat)
+uint32_t m_enc_dsp_block_type_a_instr(int opcode, int src_a, int a_reg, int src_b, int b_reg, int src_c, int c_reg, int dest, int shift, int sat)
 {
-	return ((uint32_t)opcode)
-		| ((uint32_t)(src_a & IBM(BLOCK_REG_ADDR_WIDTH)) 	<< (0 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH))
-		| ((uint32_t)(src_b & IBM(BLOCK_REG_ADDR_WIDTH)) 	<< (1 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH))
-		| ((uint32_t)(src_c & IBM(BLOCK_REG_ADDR_WIDTH)) 	<< (2 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH))
-		| ((uint32_t)(dest  & IBM(BLOCK_REG_ADDR_WIDTH))  	<< (3 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH))
-		| ((uint32_t)!!a_reg 	<< (BLOCK_INSTR_OP_TYPE_START + 0))
-		| ((uint32_t)!!b_reg 	<< (BLOCK_INSTR_OP_TYPE_START + 1))
-		| ((uint32_t)!!c_reg 	<< (BLOCK_INSTR_OP_TYPE_START + 2))
-		| ((uint32_t)!!dest_reg	<< (BLOCK_INSTR_OP_TYPE_START + 3))
-		| ((uint32_t)(shift & IBM(SHIFT_WIDTH)) << (BLOCK_INSTR_PMS_START))
-		| ((uint32_t)!!sat   << (BLOCK_INSTR_OP_TYPE_START + 4));
+	return place_bits( 4,  0, opcode) | (1 << 5)
+		 | place_bits( 9,  6, src_a) | ((!!a_reg) << 10)
+		 | place_bits(14, 11, src_b) | ((!!b_reg) << 15)
+		 | place_bits(19, 16, src_c) | ((!!c_reg) << 20)
+		 | place_bits(24, 21, dest)
+		 | place_bits(29, 25, shift) | ((!!sat) << 30);
 }
 
-uint32_t m_enc_dsp_block_type_b_instr(int opcode, int src_a, int src_b, int dest, int src_a_reg, int src_b_reg, int dest_reg, int res_addr)
+
+uint32_t m_enc_dsp_block_type_b_instr(int opcode, int src_a, int src_a_reg, int src_b, int src_b_reg, int dest, int res_addr)
 {
-	return ((uint32_t)opcode)
-		| ((uint32_t)(src_a & IBM(BLOCK_REG_ADDR_WIDTH)) 	<< (0 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH))
-		| ((uint32_t)(src_b & IBM(BLOCK_REG_ADDR_WIDTH)) 	<< (1 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH))
-		| ((uint32_t)(dest  & IBM(BLOCK_REG_ADDR_WIDTH))  	<< (2 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH))
-		| ((uint32_t)(!!src_a_reg)							<< (3 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH + 0))
-		| ((uint32_t)(!!src_b_reg)							<< (3 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH + 1))
-		| ((uint32_t)(!!dest_reg)							<< (3 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH + 2))
-		| ((uint32_t)(res_addr & IBM(BLOCK_RES_ADDR_WIDTH)) << (BLOCK_INSTR_WIDTH - BLOCK_RES_ADDR_WIDTH));
+	return place_bits( 4,  0, opcode) | (1 << 5)
+		 | place_bits( 9,  6, src_a) | ((!!src_a_reg) << 10)
+		 | place_bits(14, 11, src_b) | ((!!src_b_reg) << 15)
+		 | place_bits(19, 16, dest)
+		 | place_bits(27, 20, res_addr);
 }
 
-uint32_t m_enc_dsp_block_instr(int opcode, int src_a, int src_b, int src_c, int dest, int a_reg, int b_reg, int c_reg, int dest_reg, int shift, int sat, int res_addr)
+uint32_t m_enc_dsp_block_instr(int opcode, int src_a, int a_reg, int src_b, int b_reg, int src_c, int c_reg, int dest,  int shift, int sat, int res_addr)
 {
 	if (opcode == BLOCK_INSTR_DELAY_READ
 	 || opcode == BLOCK_INSTR_DELAY_WRITE
 	 || opcode == BLOCK_INSTR_SAVE
-	 || opcode == BLOCK_INSTR_LOAD)
-		return m_enc_dsp_block_type_b_instr(opcode, src_a, src_b, dest, a_reg, b_reg, dest_reg, res_addr);
+	 || opcode == BLOCK_INSTR_LOAD
+	 || opcode == BLOCK_INSTR_LUT)
+		return m_enc_dsp_block_type_b_instr(opcode, src_a, a_reg, src_b, b_reg, dest, res_addr);
 	
-	return m_enc_dsp_block_type_a_instr(opcode, src_a, src_b, src_c, dest, a_reg, b_reg, c_reg, dest_reg, shift, sat);
+	return m_enc_dsp_block_type_a_instr(opcode, src_a, a_reg, src_b, b_reg, src_c, c_reg, dest,shift, sat);
 }
+
 
 int m_fpga_block_opcode_format(int opcode)
 {
@@ -1335,6 +1330,7 @@ int m_fpga_block_opcode_format(int opcode)
 		 || opcode == BLOCK_INSTR_LOAD
 		 || opcode == BLOCK_INSTR_LUT) ? INSTR_FORMAT_B : INSTR_FORMAT_A;
 }
+
 
 int m_dsp_block_instr_format(m_dsp_block_instr instr)
 {
@@ -1347,73 +1343,65 @@ uint32_t m_encode_dsp_block_instr(m_dsp_block_instr instr)
 	{
 		return m_enc_dsp_block_type_b_instr(
 			instr.opcode,
-			instr.src_a,
-			instr.src_b,
-			instr.dest,
-			instr.src_a_reg,
-			instr.src_b_reg,
-			instr.dest_reg,
-			instr.res_addr);
+			instr.src_a, instr.src_a_reg,
+			instr.src_b, instr.src_b_reg,
+			instr.dest,  instr.res_addr);
 	}
 	else
 	{
 		return m_enc_dsp_block_type_a_instr(instr.opcode,
-			instr.src_a, 	 instr.src_b, 	  instr.src_c, 	   instr.dest,
-			instr.src_a_reg, instr.src_b_reg, instr.src_c_reg, instr.dest_reg,
-			instr.shift, instr.sat);
+			instr.src_a, 	 instr.src_a_reg,
+			instr.src_b, 	 instr.src_b_reg, 
+			instr.src_c, 	 instr.src_c_reg,
+			instr.dest, instr.shift, instr.sat);
 	}
 }
 
-m_dsp_block_instr m_dsp_block_instr_type_a_str(int opcode, int src_a, int src_b, int src_c, int dest, int a_reg, int b_reg, int c_reg, int dest_reg, int shift, int sat)
+m_dsp_block_instr m_dsp_block_instr_type_a_str(int opcode, int src_a, int a_reg, int src_b, int b_reg, int src_c, int c_reg, int dest, int shift, int sat)
 {
-	return (m_dsp_block_instr){opcode, src_a, src_b, src_c, dest, a_reg, b_reg, c_reg, dest_reg, shift, sat};
+	return (m_dsp_block_instr){opcode, src_a, a_reg, src_b, b_reg, src_c, c_reg, dest, shift, sat};
 }
 
-m_dsp_block_instr m_dsp_block_instr_type_b_str(int opcode, int src_a, int src_b, int dest, int a_reg, int b_reg, int dest_reg, int res_addr)
+m_dsp_block_instr m_dsp_block_instr_type_b_str(int opcode, int src_a, int a_reg, int src_b, int b_reg, int dest, int res_addr)
 {
-	return (m_dsp_block_instr){opcode, src_a, src_b, 0, dest, a_reg, b_reg, 0, dest_reg, 0, 0, res_addr};
+	return (m_dsp_block_instr){opcode, src_a, a_reg, src_b, b_reg, 0, 0, dest, 0, 0, res_addr};
 }
 
 m_dsp_block_instr m_decode_dsp_block_instr(uint32_t code)
 {
 	m_dsp_block_instr result;
 	
-	result.opcode = range_bits(code, BLOCK_INSTR_OP_WIDTH, 0);
+	result.opcode = range_bits(code, 4, 0);
 	
-	result.src_a = range_bits(code, BLOCK_REG_ADDR_WIDTH, 0 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH);
-	result.src_b = range_bits(code, BLOCK_REG_ADDR_WIDTH, 1 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH);
+	int format = !!(code & (1 << 5));
 	
-	switch (m_dsp_block_instr_format(result))
+	result.src_a 	 = range_bits(code, 9, 6);
+	result.src_a_reg = !!(code & (1 << 10));
+	
+	result.src_b 	 = range_bits(code, 14, 11);
+	result.src_b_reg = !!(code & (1 << 15));
+	
+	if (format)
 	{
-		case INSTR_FORMAT_A:
-			result.src_c = range_bits(code, BLOCK_REG_ADDR_WIDTH, 2 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH);
-			result.dest  = range_bits(code, BLOCK_REG_ADDR_WIDTH, 3 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH);
-			
-			result.src_a_reg = range_bits(code, 1, BLOCK_INSTR_OP_TYPE_START + 0);
-			result.src_b_reg = range_bits(code, 1, BLOCK_INSTR_OP_TYPE_START + 1);
-			result.src_c_reg = range_bits(code, 1, BLOCK_INSTR_OP_TYPE_START + 2);
-			result.dest_reg  = range_bits(code, 1, BLOCK_INSTR_OP_TYPE_START + 3);
-			
-			result.shift = range_bits(code, 4, BLOCK_INSTR_PMS_START);
-			
-			result.sat = range_bits(code, 1, BLOCK_INSTR_OP_TYPE_START + 4);
-			break;
+		result.src_c = 0;
+		result.src_c_reg = 0;
 		
-		case INSTR_FORMAT_B:
-			result.dest  = range_bits(code, BLOCK_REG_ADDR_WIDTH, 2 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH);
-			result.src_c = 0;
-			
-			result.src_a_reg = 0;
-			result.src_b_reg = 0;
-			result.src_c_reg = 0;
-			result.dest_reg  = 0;
-			
-			result.shift = 0;
-			
-			result.sat = 0;
-			
-			result.res_addr = range_bits(code, BLOCK_RES_ADDR_WIDTH, 3 * BLOCK_REG_ADDR_WIDTH + BLOCK_INSTR_OP_WIDTH);
-			break;
+		result.dest = range_bits(code, 19, 16);
+		result.shift = 0;
+		result.sat = 0;
+		
+		result.res_addr = range_bits(code, 27, 20);
+	}
+	else
+	{
+		result.src_c 	 = range_bits(code, 19, 16);
+		result.src_c_reg = !!(code & (1 << 20));
+		
+		result.dest = range_bits(code, 24, 21);
+		result.shift = range_bits(code, 29, 25);
+		result.sat = !!(code & (1 << 30));
+		
+		result.res_addr = 0;
 	}
 
     return result;
@@ -1584,7 +1572,7 @@ void print_instruction(m_dsp_block_instr instr)
 						instr.src_a_reg,
 						instr.src_b_reg,
 						instr.src_c_reg,
-						instr.dest_reg,
+						
 						instr.shift,
 						instr.sat);
 			break;

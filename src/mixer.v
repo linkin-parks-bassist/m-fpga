@@ -1,3 +1,17 @@
+`define MIXER_STATE_READY		 		0
+`define MIXER_APPLY_INPUT_GAIN_1 		1
+`define MIXER_APPLY_INPUT_GAIN_2 		2
+`define MIXER_APPLY_INPUT_GAIN_3 		3
+`define MIXER_APPLY_INPUT_GAIN_DONE		4
+`define MIXER_MIX_PIPELINES_1	 		5
+`define MIXER_MIX_PIPELINES_2	 		6
+`define MIXER_MIX_PIPELINES_3	 		7
+`define MIXER_APPLY_OUTPUT_GAIN_1 		8
+`define MIXER_APPLY_OUTPUT_GAIN_2 		9
+`define MIXER_APPLY_OUTPUT_GAIN_3 		10
+`define MIXER_APPLY_OUTPUT_GAIN_DONE 	11
+`define MIXER_REST				 		12
+
 module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 		input wire clk,
 		input wire reset,
@@ -99,7 +113,7 @@ module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 		end
 		else begin
 			case (state)
-				0: begin
+				`MIXER_STATE_READY: begin
 					if (swap_pipelines || pipeline_swap_requested) begin
 						pipelines_swapping <= 1;
 						target_pipeline <= ~target_pipeline;
@@ -110,7 +124,7 @@ module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 						mul_arg_aa <= in_sample;
 						mul_arg_ab <= input_gain;
 						in_sample_ready <= 0;
-						state <= 1;
+						state <= `MIXER_APPLY_INPUT_GAIN_1;
 						
 						if (pipelines_swapping) begin
 							if (target_pipeline) begin
@@ -146,66 +160,66 @@ module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 						mul_arg_ba <= out_sample_in_b;
 						mul_arg_bb <= output_b_gain;
 						
-						state <= 3;
+						state <= `MIXER_MIX_PIPELINES_1;
 					end
 				end
 				
-				1: begin
-					state <= 2;
+				`MIXER_APPLY_INPUT_GAIN_1: begin
+					state <= `MIXER_APPLY_INPUT_GAIN_2;
 				end
 				
-                2: begin
+                `MIXER_APPLY_INPUT_GAIN_2: begin
                     prod_a_latched <= prod_a;
-                    state <= 3;
+                    state <= `MIXER_APPLY_INPUT_GAIN_3;
                 end
 
-                3: begin
-                    state <= 4;
+                `MIXER_APPLY_INPUT_GAIN_3: begin
+                    state <= `MIXER_APPLY_INPUT_GAIN_DONE;
                 end
 
-				4: begin
+				`MIXER_APPLY_INPUT_GAIN_DONE: begin
 					in_sample_out <= prod_a_final;
 					in_sample_ready <= 1;
-					state <= 12;
+					state <= `MIXER_REST;
 				end
 				
-				5: begin
-					state <= 6;
+				`MIXER_MIX_PIPELINES_1: begin
+					state <= `MIXER_MIX_PIPELINES_2;
 				end
 				
-				6: begin
+				`MIXER_MIX_PIPELINES_2: begin
 					prod_a_latched <= prod_a;
                     prod_b_latched <= prod_b;
-                    state <= 7;
+                    state <= `MIXER_MIX_PIPELINES_3;
 				end
 
-                7: begin
-                    state <= 8;
+                `MIXER_MIX_PIPELINES_3: begin
+                    state <= `MIXER_APPLY_OUTPUT_GAIN_1;
                 end
 
-				8: begin
+				`MIXER_APPLY_OUTPUT_GAIN_1: begin
 					mul_arg_aa <= prod_sum_final;
 					mul_arg_ab <= output_gain;
-					state <= 9;
+					state <= `MIXER_APPLY_OUTPUT_GAIN_2;
 				end
 				
-				9: begin
-					state <= 10;
+				`MIXER_APPLY_OUTPUT_GAIN_2: begin
+					state <= `MIXER_APPLY_OUTPUT_GAIN_3;
 				end
 				
-                10: begin
+                `MIXER_APPLY_OUTPUT_GAIN_3: begin
                     prod_a_latched <= prod_a;
                     state <= 11;
                 end
 
-				11: begin
+				`MIXER_APPLY_OUTPUT_GAIN_DONE: begin
 					out_sample <= prod_a_final;
 					out_sample_ready <= 1;
-					state <= 12;
+					state <= `MIXER_REST;
 				end
 				
-				12: begin
-					state <= 0;
+				`MIXER_REST: begin
+					state <= `MIXER_STATE_READY;
 				end
 			endcase
 		end

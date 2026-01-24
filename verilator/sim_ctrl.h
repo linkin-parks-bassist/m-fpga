@@ -55,14 +55,12 @@ typedef struct
 {
 	int opcode;
 	int src_a;
-	int src_b;
-	int src_c;
-	int dest;
-	
 	int src_a_reg;
+	int src_b;
 	int src_b_reg;
+	int src_c;
 	int src_c_reg;
-	int dest_reg;
+	int dest;
 	
 	int shift;
 	int sat;
@@ -73,8 +71,8 @@ typedef struct
 int m_dsp_block_instr_format(m_dsp_block_instr instr);
 uint32_t m_encode_dsp_block_instr(m_dsp_block_instr instr);
 
-m_dsp_block_instr m_dsp_block_instr_type_a_str(int opcode, int src_a, int src_b, int src_c, int dest, int a_reg, int b_reg, int c_reg, int dest_reg, int shift, int sat);
-m_dsp_block_instr m_dsp_block_instr_type_b_str(int opcode, int src_a, int src_b, int dest, int a_reg, int b_reg, int dest_reg, int res_addr);
+m_dsp_block_instr m_dsp_block_instr_type_a_str(int opcode, int src_a, int a_reg, int src_b, int b_reg, int src_c, int c_reg, int dest,  int shift, int sat);
+m_dsp_block_instr m_dsp_block_instr_type_b_str(int opcode, int src_a, int a_reg, int src_b, int b_reg, int dest, int res_addr);
 
 typedef struct
 {

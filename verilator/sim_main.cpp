@@ -253,8 +253,8 @@ int main(int argc, char** argv)
 	m_parameter_pll *params = NULL;
 	
 	m_fpga_batch_append(&batch, COMMAND_ALLOC_SRAM_DELAY);
-	m_fpga_batch_append(&batch, 8192 & 0xFF00);
-	m_fpga_batch_append(&batch, 8192 & 0x00FF);
+	m_fpga_batch_append(&batch, (8192 & 0xFF00) >> 8);
+	m_fpga_batch_append(&batch,  8192 & 0x00FF);
 	
 	int delay = 4096;
 	
@@ -262,19 +262,19 @@ int main(int argc, char** argv)
 	m_parameter *param = new_m_parameter_wni("Delay", "delay", delay, 0.0, 0.0);
 	m_effect_desc_add_param(eff, param);
 	params = m_parameter_pll_append(params, param);
-	param = new_m_parameter_wni("Delay Gain", "delay_gain", -3.0, -30.0, 0.0);
+	param = new_m_parameter_wni("Delay Gain", "delay_gain", -1.0, -30.0, 0.0);
 	m_effect_desc_add_param(eff, param);
 	params = m_parameter_pll_append(params, param);
 	
-	m_dsp_block *blk = new_m_dsp_block_with_instr(m_dsp_block_instr_type_b_str(BLOCK_INSTR_DELAY_READ, 0, 0, 1, 1, 0, 0, 0));
+	m_dsp_block *blk = new_m_dsp_block_with_instr(m_dsp_block_instr_type_b_str(BLOCK_INSTR_DELAY_READ, 0, 1, 0, 0, 1, 0));
 	m_effect_desc_add_block(eff, blk);
 	m_effect_desc_add_register_val_literal(eff, 0, 0, delay);
 	
-	blk = new_m_dsp_block_with_instr(m_dsp_block_instr_type_a_str(BLOCK_INSTR_MAD, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0));
+	blk = new_m_dsp_block_with_instr(m_dsp_block_instr_type_a_str(BLOCK_INSTR_MAD, 0, 1, 1, 0, 0, 0, 0, 0, 0));
 	m_effect_desc_add_block(eff, blk);
 	m_effect_desc_add_register_val(eff, 1, 0, 0, "pow 10 (/ delay_gain 20)");
 	
-	blk = new_m_dsp_block_with_instr(m_dsp_block_instr_type_b_str(BLOCK_INSTR_DELAY_WRITE, 0, 0, 0, 0, 0, 0, 0));
+	blk = new_m_dsp_block_with_instr(m_dsp_block_instr_type_b_str(BLOCK_INSTR_DELAY_WRITE, 0, 0, 0, 0, 0, 0));
 	m_effect_desc_add_block(eff, blk);
 	
 	m_fpga_resource_report res = m_empty_fpga_resource_report();

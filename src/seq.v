@@ -70,7 +70,6 @@ module dsp_core #(
 	// Instruction decoding
 	//
 	wire [`BLOCK_INSTR_OP_WIDTH - 1 : 0] operation;
-	reg [`BLOCK_INSTR_OP_WIDTH - 1 : 0] operation_latched;
 	
 	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] src_a;
 	wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] src_b;
@@ -80,7 +79,6 @@ module dsp_core #(
 	wire src_a_reg;
 	wire src_b_reg;
 	wire src_c_reg;
-	wire dest_reg;
 
 	wire saturate;
     reg saturate_latched;
@@ -105,7 +103,6 @@ module dsp_core #(
 		.src_a_reg(src_a_reg),
 		.src_b_reg(src_b_reg),
 		.src_c_reg(src_c_reg),
-		.dest_reg(dest_reg),
 
 		.saturate(saturate),
 
@@ -277,37 +274,28 @@ module dsp_core #(
 				`CORE_STATE_BLOCK_START: begin
                     saturate_latched <= saturate;
                     instr_shift_latched <= instr_shift;
-                    operation_latched <= operation;
                     
 					state <= `CORE_STATE_FETCH_SRC_A;
 					ret_state <= `CORE_STATE_DISPATCH;
 				end
 				
 				`CORE_STATE_FINISH_BLOCK: begin
-					if (dest_reg) begin
-						reg_write_val <= work;
-						reg_write_addr <= {current_block, dest};
-						reg_write <= 1;
-					end
-					else begin
-						ch_write_val <= work;
-						ch_write_addr <= dest;
-						ch_write <= 1;
-					end
+					ch_write_val <= work;
+					ch_write_addr <= dest;
+					ch_write <= 1;
 					
+					current_block <= current_block + 1;
 					state <= `CORE_STATE_CONTINUE;
 				end
 				
 				`CORE_STATE_CONTINUE: begin
-					if (current_block == last_block || current_block == n_blocks - 1) begin
+					if (current_block == last_block + 1 || current_block == n_blocks) begin
 						current_block 	<= 0;
 						ch_fetch_addr 	<= 0;
 						
 						wait_one <= 1;
 						state <= `CORE_STATE_FINISH;
-					end
-					else begin
-						current_block <= current_block + 1;
+					end else begin
 						state <= `CORE_STATE_BLOCK_START;
 					end
 				end
@@ -394,6 +382,7 @@ module dsp_core #(
 				`CORE_STATE_DISPATCH: begin
 					case (operation)
 						`BLOCK_INSTR_NOP: begin
+							current_block <= current_block + 1;
 							state <= `CORE_STATE_CONTINUE;
 						end
 						
@@ -611,6 +600,7 @@ module dsp_core #(
 					if (!wait_one && delay_write_ack) begin
 						delay_write_req <= 0;
 						
+						current_block <= current_block + 1;
 						state <= `CORE_STATE_CONTINUE;
 					end
 				end
@@ -619,12 +609,14 @@ module dsp_core #(
 					mem_write_addr 	<= res_addr[$clog2(memory_size) - 1 : 0];
 					mem_write_val 	<= src_a_latched;
 					mem_write 		<= 1;
+					current_block <= current_block + 1;
 					state <= `CORE_STATE_CONTINUE;
 				end
 				
 				`CORE_STATE_LOAD_1: begin
 					if (!wait_one) begin
 						work <= mem_fetch;
+						current_block <= current_block + 1;
 						state <= `CORE_STATE_FINISH_BLOCK;
 					end
 				end
@@ -648,6 +640,8 @@ module dsp_core #(
 
 				`CORE_STATE_MAC_4: begin
 					accumulator <= accumulator + mul_result_latched_shifted_latched;
+					
+					current_block <= current_block + 1;
 					state <= `CORE_STATE_CONTINUE;
 				end
 			endcase

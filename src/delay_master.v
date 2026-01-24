@@ -2,6 +2,14 @@
 `define DELAY_MASTER_STATE_READ_WAIT	1
 `define DELAY_MASTER_STATE_WRITE_WAIT	2
 
+`define DELAY_CTRL_READ_STATE_READY  	0
+`define DELAY_CTRL_READ_STATE_PAUSE1  	1
+`define DELAY_CTRL_READ_STATE_DISPATCH 	2
+`define DELAY_CTRL_READ_STATE_PAUSE2 	3
+`define DELAY_CTRL_READ_STATE_WAIT 		4
+`define DELAY_CTRL_READ_STATE_SETTLE	5
+
+
 module delay_master
 	#(
 		parameter data_width = 16,
@@ -92,7 +100,7 @@ module delay_master
 	
 	wire buffers_exhausted 		= (sram_buffer_next_handle >= (n_sram_buffers - 1));
 	wire alloc_req_size_pow2 	= ~|(alloc_size_latched & (alloc_size_latched - 1));
-	wire alloc_too_big			= ((sram_alloc_addr + alloc_size_latched) >= sram_capacity);
+	wire alloc_too_big			= ((sram_alloc_addr + alloc_size_latched) > sram_capacity);
 
 	localparam data_sram_cmp_width = data_width > sram_addr_width ? data_width : sram_addr_width;
 	
@@ -208,51 +216,50 @@ module delay_master
 			end
 
             case (read_state)
-                0: begin
+                `DELAY_CTRL_READ_STATE_READY: begin
                     if (read_req) begin
                         read_req_arg_latched <= read_req_arg;
                         read_req_handle_latched <= read_req_handle;
-                        read_state <= 1;
+                        read_state <= `DELAY_CTRL_READ_STATE_PAUSE1;
                     end
                 end
 
-                1: begin
-                    read_state <= 2;
+                `DELAY_CTRL_READ_STATE_PAUSE1: begin
+                    read_state <= `DELAY_CTRL_READ_STATE_DISPATCH;
                 end
 
-                2: begin
+                `DELAY_CTRL_READ_STATE_DISPATCH: begin
                     if (valid_read_handle) begin
                         req_sram_read_addr 	<= read_sram_addr;
 						req_sram_read  		<= 1;
 						
-						read_state <= 3;
+						read_state <= `DELAY_CTRL_READ_STATE_PAUSE2;
                     end else begin
                         invalid_read <= 1;
-                        read_state <= 0;
+                        read_state <= `DELAY_CTRL_READ_STATE_SETTLE;
                     end
                 end
 
-                3: begin
+                `DELAY_CTRL_READ_STATE_PAUSE2: begin
                     read_state <= 4;
                 end
 
-                4: begin
+                `DELAY_CTRL_READ_STATE_WAIT: begin
                     if (sram_read_invalid) begin
                         invalid_read 	<= 1;
 
                         req_sram_read 	<= 0;
-                        read_state      <= 5;
-                    end
-                    else if (sram_read_ready) begin
+                        read_state      <= `DELAY_CTRL_READ_STATE_SETTLE;
+                    end else if (sram_read_ready) begin
                         data_out 	<= data_from_sram;
                         
                         req_sram_read 	<= 0;
                         read_ready 		<= 1;
-                        read_state      <= 5;
+                        read_state      <= `DELAY_CTRL_READ_STATE_SETTLE;
                     end
                 end
     
-                5: begin
+                `DELAY_CTRL_READ_STATE_SETTLE: begin
                     read_state <= 0;
                 end
             endcase
