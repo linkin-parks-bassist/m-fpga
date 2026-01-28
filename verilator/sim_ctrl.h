@@ -114,11 +114,13 @@ m_dsp_block_instr m_dsp_block_instr_save(int addr, int src, int src_reg);
 m_dsp_block_instr m_dsp_block_instr_load(int addr, int dest);
 m_dsp_block_instr m_dsp_block_instr_mov(int src, int src_reg, int dest);
 m_dsp_block_instr m_dsp_block_instr_clamp(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_macz(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_mac(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest);
+m_dsp_block_instr m_dsp_block_instr_macz(int src_a, int src_a_reg, int src_b, int src_b_reg);
+m_dsp_block_instr m_dsp_block_instr_macz_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg);
+m_dsp_block_instr m_dsp_block_instr_mac(int src_a, int src_a_reg, int src_b, int src_b_reg);
+m_dsp_block_instr m_dsp_block_instr_mac_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg);
 m_dsp_block_instr m_dsp_block_instr_mov_acc(int dest);
 m_dsp_block_instr m_dsp_block_instr_linterp(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_frac_delay(int src_a, int src_a_reg, int buffer, int dest);
+m_dsp_block_instr m_dsp_block_instr_frac_delay(int buffer, int dest);
 m_dsp_block_instr m_dsp_block_instr_load_acc(int addr);
 m_dsp_block_instr m_dsp_block_instr_save_acc(int addr);
 m_dsp_block_instr m_dsp_block_instr_acc(int src_a, int src_a_reg);
@@ -295,5 +297,7 @@ int m_fpga_transfer_batch_append_effect(
 
 int16_t float_to_q_nminus1(float x, int shift);
 int16_t float_to_q15(float x);
+
+m_effect_desc *create_flanger_eff_desc();
 
 #endif

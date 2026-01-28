@@ -15,7 +15,7 @@
 #include "math.h"
 
 
-#define MAX_SAMPLES		(1 << 18)
+#define MAX_SAMPLES		(1 << 17)
 //#define PRINT_STATE
 //#define DUMP_WAVEFORM
 

@@ -257,7 +257,7 @@ int main(int argc, char** argv)
 	m_effect_desc *eff = new_m_effect_desc("Flanger");
 	m_parameter *param1 = new_m_parameter_wni("Center", "center", 5, 0.1, 20.0);
 	m_parameter *param2 = new_m_parameter_wni("Depth", "depth", 4.0, 0.1, 10.0);
-	m_parameter *param3 = new_m_parameter_wni("Rate", "rate", 10.0, 0.0, 2.0);
+	m_parameter *param3 = new_m_parameter_wni("Rate", "rate", 1.0, 0.0, 2.0);
 	m_parameter *param4 = new_m_parameter_wni("Strength", "strength", 0.8, 0.0, 1.0);
 	
 	m_effect_desc_add_param(eff, param1);
@@ -273,38 +273,31 @@ int main(int argc, char** argv)
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_load_acc(1)));
 	// Add phase accumulator (wrapping)
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_accu(0, 1)));
-	m_effect_desc_add_register_val(eff, 1, 0, DSP_REG_FORMAT_LITERAL, "* rate 12174.0");
+	m_effect_desc_add_register_val(eff, 1, 0, DSP_REG_FORMAT_LITERAL, "* rate 6087.0");
 	// Save new phase accumulator
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_save_acc(1)));
 	// Put accumulator on ch0
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mov_uacc(1)));
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_lsh4(1, 0, 9)));
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_lsh(1, 0, 9)));
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mov(1, 0, 1)));
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_lsh4(1, 0, 1)));
 	
 	// take sin of phase accumulator
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_lut(1, 0, 0, 2)));
 	
-	// shift sin(phase_acc) to q12.4
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_arsh8(2, 0, 3)));
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_arsh4(3, 0, 3)));
+	// multiply sin(phase_acc) by depth (stored as #samples, left shifted 1) into accumulator with no shift
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_macz_noshift(2, 0, 0, 1)));
+	m_effect_desc_add_register_val(eff, 6, 0, DSP_REG_FORMAT_LITERAL, "* * 2 44.1 depth");
+	// add 
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mac_noshift(0, 1, 1, 1)));
+	m_effect_desc_add_register_val(eff, 7, 0, DSP_REG_FORMAT_LITERAL, "* 4 * 44.1 center");
+	m_effect_desc_add_register_val(eff, 7, 1, DSP_REG_FORMAT_LITERAL, "16384");
 	
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mul_noshift(3, 0, 0, 1, 4)));
-	m_effect_desc_add_register_val(eff, 10, 0, DSP_REG_FORMAT_LITERAL, "* 44.1 depth");
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_add(4, 0, 0, 1, 5)));
-	m_effect_desc_add_register_val(eff, 11, 0, DSP_REG_FORMAT_LITERAL, "* 8 * 44.1 center");
-	
-	// clamp to valid range
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_clamp(5, 0, 0, 1, 1, 1, 6)));
-	m_effect_desc_add_register_val(eff, 12, 0, DSP_REG_FORMAT_LITERAL, "0");
-	m_effect_desc_add_register_val(eff, 12, 1, DSP_REG_FORMAT_LITERAL, "* 8 * 44.1 + center depth");
 	// get fractional delay
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_frac_delay(6, 0, 0, 7)));
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_frac_delay(0, 7)));
 	// write to delay buffer
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_delay_write(0, 0, 0)));
 	// mix in fractional delay
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_madd(0, 1, 7, 0, 0, 0, 0, 0)));
-	m_effect_desc_add_register_val(eff, 15, 0, 0, "strength");
+	m_effect_desc_add_register_val(eff, 10, 0, 0, "strength");
 	
 	m_fpga_resource_report res = m_empty_fpga_resource_report();
 	m_fpga_resource_report local;

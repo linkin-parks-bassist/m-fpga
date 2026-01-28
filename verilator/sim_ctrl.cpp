@@ -210,14 +210,24 @@ m_dsp_block_instr m_dsp_block_instr_clamp(int src_a, int src_a_reg, int src_b, i
 	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_CLAMP, src_a, src_a_reg, src_b, src_b_reg, src_c, src_c_reg, dest, 0, 0);
 }
 
-m_dsp_block_instr m_dsp_block_instr_macz(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest)
+m_dsp_block_instr m_dsp_block_instr_macz(int src_a, int src_a_reg, int src_b, int src_b_reg)
 {
-	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_MACZ, src_a, src_a_reg, src_b, src_b_reg, 0, 0, dest, 0, 0);
+	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_MACZ, src_a, src_a_reg, src_b, src_b_reg, 0, 0, 0, 0, 0);
 }
 
-m_dsp_block_instr m_dsp_block_instr_mac(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest)
+m_dsp_block_instr m_dsp_block_instr_macz_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg)
 {
-	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_MAC, src_a, src_a_reg, src_b, src_b_reg, src_c, src_c_reg, dest, 0, 0);
+	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_MACZ, src_a, src_a_reg, src_b, src_b_reg, 0, 0, 0, NO_SHIFT, 0);
+}
+
+m_dsp_block_instr m_dsp_block_instr_mac(int src_a, int src_a_reg, int src_b, int src_b_reg)
+{
+	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_MAC, src_a, src_a_reg, src_b, src_b_reg, 0, 0, 0, 0, 0);
+}
+
+m_dsp_block_instr m_dsp_block_instr_mac_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg)
+{
+	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_MAC, src_a, src_a_reg, src_b, src_b_reg, 0, 0, 0, NO_SHIFT, 0);
 }
 
 m_dsp_block_instr m_dsp_block_instr_mov_acc(int dest)
@@ -230,9 +240,9 @@ m_dsp_block_instr m_dsp_block_instr_linterp(int src_a, int src_a_reg, int src_b,
 	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_LINTERP, src_a, src_a_reg, src_b, src_b_reg, src_c, src_c_reg, dest, 0, 0);
 }
 
-m_dsp_block_instr m_dsp_block_instr_frac_delay(int src_a, int src_a_reg, int buffer, int dest)
+m_dsp_block_instr m_dsp_block_instr_frac_delay(int buffer, int dest)
 {
-	return m_dsp_block_instr_type_b_str(BLOCK_INSTR_FRAC_DELAY, src_a, src_a_reg, 0, 0, dest, buffer);
+	return m_dsp_block_instr_type_b_str(BLOCK_INSTR_FRAC_DELAY, 0, 0, 0, 0, dest, buffer);
 }
 
 m_dsp_block_instr m_dsp_block_instr_load_acc(int addr)
@@ -289,8 +299,11 @@ m_dsp_block *new_m_dsp_block_with_instr(m_dsp_block_instr instr)
 
 int m_dsp_block_add_register_val(m_dsp_block *blk, int i, m_dsp_register_val *p)
 {
-	if (!blk || !p || i < 0 || i > N_BLOCKS_REGS)
+	if (!blk || !p)
 		return ERR_NULL_PTR;
+
+	if (i < 0 || i >= N_BLOCKS_REGS)
+		return ERR_BAD_ARGS;
 
 	p->reg = i;
 	
@@ -323,7 +336,7 @@ int m_derived_quantity_arity(m_derived_quantity *dq)
 	 || dq->type == M_DERIVED_QUANTITY_FCALL_POW)
 		return 2;
 	
-	return ERR_NULL_PTR;
+	return 1;
 }
 
 m_parameter_pll *m_parameter_pll_append(m_parameter_pll *pll, m_parameter *param)
@@ -469,34 +482,34 @@ float m_derived_quantity_compute(m_derived_quantity *dq, m_parameter_pll *params
 int m_derived_quantity_references_param_rec(m_derived_quantity *dq, m_parameter *param, int depth)
 {
 	if (!dq || !param)
-		return NO_ERROR;
+		return 0;
 	
 	if (!param->name_internal)
-		return NO_ERROR;
+		return 0;
 	
 	int arity = m_derived_quantity_arity(dq);
 	
 	if (arity == 0)
 	{
 		if (dq->type != M_DERIVED_QUANTITY_REFERENCE)
-			return NO_ERROR;
+			return 0;
 	
 		if (!dq->val.ref_name)
-				return NO_ERROR;
+				return 0;
 			
 		return (strncmp(dq->val.ref_name, param->name_internal, strlen(dq->val.ref_name) + 1) == 0);
 	}
 	
 	if (depth > DQ_MAX_RECURSION_DEPTH)
-		return NO_ERROR;
+		return 0;
 	
 	for (int i = 0; i < arity; i++)
 	{
 		if (m_derived_quantity_references_param_rec(dq->val.sub_dqs[i], param, depth + 1))
-			return ERR_NULL_PTR;
+			return 1;
 	}
 	
-	return NO_ERROR;
+	return 0;
 }
 
 int m_derived_quantity_references_param(m_derived_quantity *dq, m_parameter *param)
@@ -849,7 +862,7 @@ m_derived_quantity m_derived_quantity_const_float(float v)
 m_derived_quantity m_derived_quantity_const_int(int v)
 {
 	m_derived_quantity result;
-	result.type = M_DERIVED_QUANTITY_CONST_FLT;
+	result.type = M_DERIVED_QUANTITY_CONST_INT;
 	result.val.val_int = v;
 	return result;
 }
@@ -1411,7 +1424,7 @@ m_dsp_block_instr m_decode_dsp_block_instr(uint32_t code)
 		result.dest = range_bits(code, 4, 21);
 		result.shift = range_bits(code, 5, 25);
 		result.sat = !!(code & (1 << 30));
-		result.no_shift = !!(code & (1 << 30));
+		result.no_shift = !!(code & (1 << 31));
 		
 		result.res_addr = 0;
 	}
@@ -1582,25 +1595,28 @@ void print_instruction(m_dsp_block_instr instr)
 	switch (m_dsp_block_instr_format(instr))
 	{
 		case INSTR_FORMAT_A:
-			printf("Instruction = %s(%d, %d, %d, %d, %d, %d, %d, %d, %d, %d)",
+			printf("Instruction = %s(%d, %d, %d, %d, %d, %d, %d %d, %d, %d)",
 						m_dsp_block_opcode_to_string(instr.opcode),
 						instr.src_a,
-						instr.src_b,
-						instr.src_c,
-						instr.dest,
 						instr.src_a_reg,
+						instr.src_b,
 						instr.src_b_reg,
+						instr.src_c,
 						instr.src_c_reg,
+						instr.dest,
 						
+						instr.no_shift,
 						instr.shift,
 						instr.sat);
 			break;
 		
 		case INSTR_FORMAT_B:
-			printf("Instruction = %s(%d, %d, %d, 0x%04x)",
+			printf("Instruction = %s(%d, %d, %d, %d, %d, 0x%04x)",
 						m_dsp_block_opcode_to_string(instr.opcode),
 							instr.src_a,
+							instr.src_a_reg,
 							instr.src_b,
+							instr.src_b_reg,
 							instr.dest,
 							instr.res_addr);
 			break;
@@ -1834,3 +1850,58 @@ int m_fpga_resource_report_integrate(m_fpga_resource_report *cxt, m_fpga_resourc
 	
 	return NO_ERROR;
 }
+
+/*
+m_effect_desc *create_flanger_eff_desc()
+{
+	m_effect_desc *eff = new_m_effect_desc("Flanger");
+	m_parameter *param1 = new_m_parameter_wni("Center", "center", 5, 0.1, 20.0);
+	m_parameter *param2 = new_m_parameter_wni("Depth", "depth", 4.0, 0.1, 10.0);
+	m_parameter *param3 = new_m_parameter_wni("Rate", "rate", 1.0, 0.0, 2.0);
+	m_parameter *param4 = new_m_parameter_wni("Strength", "strength", 0.8, 0.0, 1.0);
+	
+	m_effect_desc_add_param(eff, param1);
+	m_effect_desc_add_param(eff, param2);
+	m_effect_desc_add_param(eff, param3);
+	m_effect_desc_add_param(eff, param4);
+	
+	// Load phase accumulator from mem[0]
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_load_acc(0)));
+	// Add phase accumulator (wrapping)
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_accu(0, 1)));
+	m_effect_desc_add_register_val(eff, 1, 0, DSP_REG_FORMAT_LITERAL, "* rate 6087.0");
+	// Save new phase accumulator
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_save_acc(0)));
+	// Put accumulator on ch0
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mov_uacc(1)));
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_lsh4(1, 0, 1)));
+	
+	// take sin of phase accumulator
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_lut(1, 0, 0, 2)));
+	
+	// shift sin(phase_acc) to q12.4
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_arsh8(2, 0, 3)));
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_arsh4(3, 0, 3)));
+	
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mul_noshift(3, 0, 0, 1, 4)));
+	m_effect_desc_add_register_val(eff, 8, 0, DSP_REG_FORMAT_LITERAL, "* 44.1 depth");
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_add(4, 0, 0, 1, 5)));
+	m_effect_desc_add_register_val(eff, 9, 0, DSP_REG_FORMAT_LITERAL, "* 8 * 44.1 center");
+	
+	// clamp to valid range
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_clamp(5, 0, 0, 1, 1, 1, 6)));
+	m_effect_desc_add_register_val(eff, 10, 0, DSP_REG_FORMAT_LITERAL, "0");
+	m_effect_desc_add_register_val(eff, 10, 1, DSP_REG_FORMAT_LITERAL, "* 8 * 44.1 + center depth");
+	// get fractional delay
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_frac_delay(6, 0, 0, 7)));
+	// write to delay buffer
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_delay_write(0, 0, 0)));
+	// mix in fractional delay
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_madd(0, 1, 7, 0, 0, 0, 0, 0)));
+	m_effect_desc_add_register_val(eff, 13, 0, 0, "- 0 strength");
+	
+	m_effect_desc_add_resource_request(eff, new_fpga_resource_req(M_FPGA_RESOURCE_DDELAY, 8192));
+	
+	return eff;
+}
+*/
