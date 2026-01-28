@@ -254,7 +254,7 @@ module dsp_core #(
 	//
 	// linear interpolation unit
 	//
-	localparam interp_bits = 5;
+	localparam interp_bits = 8;
 	
 	sequential_interp #(.data_width(data_width), .interp_bits(interp_bits)) interp
 	(
@@ -805,12 +805,12 @@ module dsp_core #(
 				end
 				
 				`CORE_STATE_DELAY_WRITE_2: begin
-					if (!wait_one && delay_write_ack) begin
+					//if (!wait_one && delay_write_ack) begin
 						delay_write_req <= 0;
 						
 						no_write_work <= 1;
 						state <= `CORE_STATE_FINISH_BLOCK;
-					end
+					//end
 				end
 				
 				`CORE_STATE_SAVE_1: begin
@@ -849,16 +849,19 @@ module dsp_core #(
 				
 				`CORE_STATE_MAC_2: begin
                     mul_result_latched <= mul_result;
-                    state <= `CORE_STATE_MAC_3;
+                    if (no_shift)
+						state <= `CORE_STATE_MAC_4;
+					else
+						state <= `CORE_STATE_MAC_3;
                 end
 				
 				`CORE_STATE_MAC_3: begin
-                    mul_result_latched_shifted_latched <= mul_result_latched_shifted;
+					mul_result_latched <= mul_result_latched_shifted;
                     state <= `CORE_STATE_MAC_4;
                 end
 
 				`CORE_STATE_MAC_4: begin
-					accumulator <= accumulator + mul_result_latched_shifted_latched;
+					accumulator <= accumulator + mul_result_latched;
 					
 					no_write_work <= 1;
 					state <= `CORE_STATE_FINISH_BLOCK;
@@ -886,17 +889,22 @@ module dsp_core #(
 				end
 				
 				`CORE_STATE_FRAC_DELAY_1: begin
-					delay_req_arg <= src_a_latched >> 4;
-					delay_req_handle <= res_addr;
-					delay_read_req <= 1;
-					wait_one <= 1;
-					state <= `CORE_STATE_FRAC_DELAY_2;
+					if (accumulator[2*data_width-1]) begin // refuse negative delays
+						work <= sample_in;
+						state <= `CORE_STATE_FINISH_BLOCK;
+					end else begin
+						delay_req_arg <= accumulator[2*data_width-1:data_width];
+						delay_req_handle <= res_addr;
+						delay_read_req <= 1;
+						wait_one <= 1;
+						state <= `CORE_STATE_FRAC_DELAY_2;
+					end
 				end
 				
 				`CORE_STATE_FRAC_DELAY_2: begin
 					if (!wait_one && delay_read_ready) begin
-						interp_arg_a <= delay_req_data_in;
-						delay_req_arg <= delay_req_arg + 1;
+						interp_arg_a  <= delay_req_data_in;
+						delay_req_arg <= accumulator[2*data_width-1:data_width]+1;
 						delay_read_req <= 1;
 						wait_one <= 1;
 						state <= `CORE_STATE_FRAC_DELAY_3;
@@ -907,7 +915,7 @@ module dsp_core #(
 					if (!wait_one && delay_read_ready) begin
 						delay_read_req <= 0;
 						interp_arg_b <= delay_req_data_in;
-						interp_frac <= {src_a_latched[3:0], 0};
+						interp_frac <= accumulator[data_width - 1 : data_width - interp_bits];
 						interp_start <= 1;
 						wait_one <= 1;
 						state <= `CORE_STATE_FRAC_DELAY_4;
