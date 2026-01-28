@@ -1,3 +1,5 @@
+`include "lut.vh"
+
 module sin_2pi_lut_16
 	(
         input wire clk,

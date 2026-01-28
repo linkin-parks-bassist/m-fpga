@@ -111,13 +111,12 @@ module contiguous_sram
     endgenerate
 
 
-    // Matching original behaviour:
-    // - read and write are 2-cycle operations
-    // - read_ready/write_ready become 0 when op begins, then 1 after completion
-    // - invalid flags are raised exactly as before
-    // - data_out updates exactly when original did
-
+	reg read_wait  = 0;
+	reg write_wait = 0;
     always @(posedge clk) begin
+		read_wait <= 0;
+		write_wait <= 0;
+		
         if (reset) begin
             read_ready   <= 1;
             write_ready  <= 1;
@@ -130,21 +129,19 @@ module contiguous_sram
             invalid_read  <= 0;
             invalid_write <= 0;
 
-            // READ HANDSHAKE
-            if (read && read_ready) begin
+            if (read && read_ready && !read_wait) begin
                 if (out_of_range_r) begin
                     invalid_read <= 1;
                 end
                 read_ready <= 0;
             end
             else if (!read_ready) begin
-                // second cycle: BRAM output now valid
                 data_out   <= bank_out[bank_r];
                 read_ready <= 1;
+				read_wait <= 1;
             end
 
-            // WRITE HANDSHAKE
-            if (write && write_ready) begin
+            if (write && write_ready && !write_wait) begin
                 if (out_of_range_w)
                     invalid_write <= 1;
 
@@ -152,8 +149,8 @@ module contiguous_sram
                 write_ready     <= 0;
             end
             else if (!write_ready) begin
-                // second cycle: write already happened
                 write_ready <= 1;
+                write_wait <= 1;
             end
         end
     end

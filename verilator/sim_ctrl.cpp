@@ -602,17 +602,20 @@ int m_fpga_transfer_batch_append_block_register_update(m_fpga_transfer_batch *ba
 	if ((ret_val = m_fpga_batch_append(batch, block_no & 0x00FF)) != NO_ERROR) return ret_val;
 	if ((ret_val = m_fpga_batch_append(batch, reg_val->reg)) 	  != NO_ERROR) return ret_val;
 	
-	int16_t s;
+	int16_t s = 0;
 	
-	if (reg_val->format == DSP_REG_FORMAT_LITERAL)
-	{
-		s = reg_val->dq->val.val_int;
-	}
-	else
+	if (reg_val->dq)
 	{
 		float v = m_derived_quantity_compute(reg_val->dq, params);
 		
-		s = float_to_q_nminus1(v, reg_val->format);
+		if (reg_val->format == DSP_REG_FORMAT_LITERAL)
+		{
+			s = (int16_t)v;
+		}
+		else
+		{
+			s = float_to_q_nminus1(v, reg_val->format);
+		}
 	}
 	
 	if ((ret_val = m_fpga_batch_append(batch, (s & 0xFF00) >> 8)) != NO_ERROR) return ret_val;

@@ -15,9 +15,9 @@
 #include "math.h"
 
 
-#define MAX_SAMPLES		(1 << 17)
+#define MAX_SAMPLES		(1 << 14)
 //#define PRINT_STATE
-//#define DUMP_WAVEFORM
+#define DUMP_WAVEFORM
 
 int tick();
 

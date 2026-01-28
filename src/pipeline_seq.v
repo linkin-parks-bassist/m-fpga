@@ -1,3 +1,7 @@
+`include "instr_dec.vh"
+`include "block.vh"
+`include "lut.vh"
+
 `define PIPELINE_READY 			0
 `define PIPELINE_PROCESSING 	1
 `define PIPELINE_INVALID	 	2
@@ -239,11 +243,8 @@ module pipeline_seq
 			.alloc_sram_req(alloc_sram_delay),
 			.alloc_size(ctrl_data_addr_width),
 			
-			.read_req_handle(delay_req_handle),
-			.read_req_arg(delay_req_arg),
-			
-			.write_req_handle(delay_req_handle),
-			.write_req_arg(delay_req_arg),
+			.req_handle(delay_req_handle),
+			.req_arg(delay_req_arg),
 			
 			.req_sram_read(sram_read),
 			.req_sram_write(sram_write),
@@ -263,9 +264,7 @@ module pipeline_seq
 			
 			.invalid_read(invalid_delay_read),
 			.invalid_write(invalid_delay_write),
-			.invalid_alloc(invalid_delay_alloc),
-
-            .n_buffers_used(out)
+			.invalid_alloc(invalid_delay_alloc)
 		);
 endmodule
 
