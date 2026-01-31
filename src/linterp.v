@@ -4,10 +4,10 @@ module combinatorial_interp
 		parameter interp_bits = 4
 	)
 	(
-		input  wire signed [data_width-1:0] base,
-		input  wire signed [data_width-1:0] target,
-		input  wire [interp_bits-1:0]        frac,
-		output wire signed [data_width-1:0]  interpolated
+		input  wire signed [data_width  - 1 : 0] base,
+		input  wire signed [data_width  - 1 : 0] target,
+		input  wire 	   [interp_bits - 1 : 0] frac,
+		output wire signed [data_width  - 1 : 0] interpolated
 	);
 
     wire signed [data_width-1:0] diff = target - base;

@@ -1015,7 +1015,7 @@ module dsp_core_alu #(parameter integer data_width = 16, parameter interp_bits =
 	localparam signed sat_max_trunc = {1'b0, {(data_width - 1){1'b1}}};
 	localparam signed sat_min_trunc = {1'b1, {(data_width - 1){1'b0}}};
 	
-	reg interp_start;
+	reg  interp_start;
 	wire interp_ready;
 	
 	wire signed [data_width  - 1 : 0] interpolated;
@@ -1143,17 +1143,17 @@ module dsp_core_alu #(parameter integer data_width = 16, parameter interp_bits =
 					saturate_latched <= saturate;
 					
 					// Skip degenerate cases
-					if ((op == `ALU_OP_LSH || op == `ALU_OP_RSH) && b_latched > data_width - 1) begin
+					if ((op == `ALU_OP_LSH || op == `ALU_OP_RSH) && b > data_width - 1) begin
 						result <= 0;
 						ready  <= 1;
 						result_valid <= 1;
 						state <= `ALU_STATE_IDLE;
-					end else if (op == `ALU_OP_ARSH && b_latched > data_width - 1) begin
+					end else if (op == `ALU_OP_ARSH && b > data_width - 1) begin
 						result <= a[data_width - 1];
 						ready <= 1;
 						result_valid <= 1;
 						state <= `ALU_STATE_IDLE;
-					end else if (op == `ALU_OP_ARSH_WIDE && b_latched > 2 * data_width - 1) begin
+					end else if (op == `ALU_OP_ARSH_WIDE && b > 2 * data_width - 1) begin
 						result_wide <= {(2*data_width){a_wide[2 * data_width - 1]}};
 						ready <= 1;
 						result_valid <= 1;
@@ -1340,7 +1340,7 @@ module dsp_core_alu #(parameter integer data_width = 16, parameter interp_bits =
 					end
 					
 					`ALU_STATE_DONE: begin
-						if (wide && ret_wide) result <= a_wide_latched;
+						if (wide && ret_wide) result_wide <= a_wide_latched;
 						else if (wide) result <= a_wide_latched_trunc;
 						else result <= a_latched;
 						
@@ -1366,10 +1366,10 @@ module dsp_core_alu #(parameter integer data_width = 16, parameter interp_bits =
 endmodule
 
 module dsp_core_2 #(
-		parameter integer data_width 		= 16,
-		parameter integer n_blocks			= 256,
-		parameter integer n_channels   		= 16,
-		parameter integer n_registers  		= 16,
+		parameter integer data_width 	= 16,
+		parameter integer n_blocks		= 256,
+		parameter integer n_channels   	= 16,
+		parameter integer n_block_regs  = 2,
 		parameter integer memory_size	= n_blocks
 	) (
 		input wire clk,
@@ -1386,10 +1386,10 @@ module dsp_core_2 #(
 		input wire command_reg_write,
 		input wire command_instr_write,
 		
-		input wire [$clog2(n_blocks)  - 1 : 0] command_block_target,
-		input wire [$clog2(n_blocks)  + 3 : 0] command_reg_target,
-		input wire [31					  : 0] command_instr_write_val,
-		input wire signed [data_width - 1 : 0] command_reg_write_val,
+		input wire [$clog2(n_blocks)  	 - 1  : 0] command_block_target,
+		input wire [$clog2(n_block_regs) - 1  : 0] command_reg_target,
+		input wire [31					  	  : 0] command_instr_write_val,
+		input wire signed [data_width 	  - 1 : 0] command_reg_write_val,
 		
 		output reg lut_req,
 		output reg signed [data_width - 1 : 0] lut_handle,
@@ -1412,10 +1412,10 @@ module dsp_core_2 #(
 	localparam signed sat_max = {{(data_width + 1){1'b0}}, {(data_width - 1){1'b1}}};
 	localparam signed sat_min = {{(data_width + 1){1'b1}}, {(data_width - 1){1'b0}}};
 	
-	localparam ctrl_mem_size 	= 16 + n_blocks * 2 + memory_size;
-	localparam ctrl_mem_addr_w 	= $clog2(ctrl_mem_size);
 	localparam block_addr_w 	= $clog2(n_blocks);
 	localparam mem_addr_w 		= $clog2(memory_size);
+	localparam ch_addr_w 		= $clog2(n_channels);
+	localparam reg_addr_w		= $clog2(n_blocks) + $clog2(n_block_regs);
 	
 	reg [31 			  : 0] instrs [n_blocks - 1 : 0];
 	
@@ -1426,29 +1426,29 @@ module dsp_core_2 #(
 	
 	reg instr_write_enable;
 	
-	reg [data_width   - 1 : 0] block_regs [block_addr_w : 0];
+	reg [data_width   - 1 : 0] block_regs [n_block_regs * n_blocks - 1 : 0];
 	
-	reg [block_addr_w     : 0] reg_read_addr;
-	reg [block_addr_w     : 0] reg_write_addr;
-	reg [data_width   - 1 : 0] reg_read_val;
-	reg [data_width   - 1 : 0] reg_write_val;
+	reg [reg_addr_w - 1 : 0] reg_read_addr;
+	reg [reg_addr_w - 1 : 0] reg_write_addr;
+	reg [data_width - 1 : 0] reg_read_val;
+	reg [data_width - 1 : 0] reg_write_val;
 	reg reg_write_enable;
 	
-	reg signed [data_width - 1 : 0] channels [15 : 0];
+	reg signed [data_width - 1 : 0] channels [n_channels - 1 : 0];
 	
-	reg [block_addr_w - 1 : 0] channel_read_addr;
-	reg [block_addr_w - 1 : 0] channel_write_addr;
-	reg [data_width   - 1 : 0] channel_read_val;
-	reg [data_width   - 1 : 0] channel_write_val;
+	reg [ch_addr_w  - 1 : 0] channel_read_addr;
+	reg [ch_addr_w  - 1 : 0] channel_write_addr;
+	reg [data_width - 1 : 0] channel_read_val;
+	reg [data_width - 1 : 0] channel_write_val;
 	
 	reg channel_write_enable;
 	
-	reg signed [data_width - 1 : 0] mem [15 : 0];
+	reg signed [data_width - 1 : 0] mem [memory_size - 1 : 0];
 	
-	reg [block_addr_w - 1 : 0] mem_read_addr;
-	reg [block_addr_w - 1 : 0] mem_read_val;
-	reg [block_addr_w - 1 : 0] mem_write_addr;
-	reg [block_addr_w - 1 : 0] mem_write_val;
+	reg [mem_addr_w - 1 : 0] mem_read_addr;
+	reg [mem_addr_w - 1 : 0] mem_write_addr;
+	reg [data_width - 1 : 0] mem_read_val;
+	reg [data_width - 1 : 0] mem_write_val;
 	
 	reg mem_write_enable;
 	
@@ -1456,10 +1456,12 @@ module dsp_core_2 #(
 		instr_read_val 	 <=     instrs[instr_read_addr  ];
 		channel_read_val <=   channels[channel_read_addr];
 		reg_read_val 	 <= block_regs[reg_read_addr    ];
+		mem_read_val 	 <= 	   mem[mem_read_addr    ];
 		
 		if   (instr_write_enable)     instrs[instr_write_addr  ] <=   instr_write_val;
 		if (channel_write_enable)   channels[channel_write_addr] <= channel_write_val;
 		if     (reg_write_enable) block_regs[reg_write_addr    ] <=     reg_write_val;
+		if     (mem_write_enable) 		 mem[mem_write_addr    ] <=     mem_write_val;
 	end
 	
 	reg [31 : 0] instr;
@@ -1680,9 +1682,10 @@ module dsp_core_2 #(
 		latch_next_instr <= 0;
 		block_boundary   <= 0;
 		
-		instr_write_enable   <= 0;
-		channel_write_enable <= 0;
-		reg_write_enable     <= 0;
+		instr_write_enable   	<= 0;
+		channel_write_enable 	<= 0;
+		reg_write_enable     	<= 0;
+		mem_write_enable 		<= 0;
 		
 		latch_instr <= 0;
 		latch_instr_next <= 0;
@@ -1848,8 +1851,10 @@ module dsp_core_2 #(
 	reg latch_shift_next;
 	reg latch_shift;
 	
-	reg signed [2 * data_width - 1 : 0] accumulator;
-	reg signed [2 * data_width - 1 : 0] accumulator_sat = (accumulator > sat_max) ? sat_max : ((accumulator < sat_min) ? sat_min : accumulator);
+	reg  signed [2 * data_width - 1 : 0] accumulator;
+	reg  signed [2 * data_width - 1 : 0] accumulator_sat = (accumulator > sat_max) ? sat_max : ((accumulator < sat_min) ? sat_min : accumulator);
+	wire signed [    data_width - 1 : 0] upper_accumulator = accumulator[2 * data_width - 1 : data_width];
+	wire signed [    data_width - 1 : 0] lower_accumulator = accumulator[    data_width - 1 :          0];
 	
 	always @(posedge clk) begin
 		latch_shift_next <= 0;
@@ -2094,9 +2099,11 @@ module dsp_core_2 #(
 					case (exec_state)
 						0: begin
 							if (src_a_valid && src_b_valid) begin
-								alu_op 		<= `ALU_OP_MUL;
+								alu_op 		<= `ALU_OP_MAC;
 								alu_a  		<= src_a_latched;
 								alu_b  		<= src_b_latched;
+								alu_b_wide  <= 0;
+								alu_no_shift<= no_shift;
 								alu_shift 	<= shift;
 								alu_trigger <= 1;
 								
@@ -2106,7 +2113,7 @@ module dsp_core_2 #(
 						
 						1: begin
 							if (alu_result_valid) begin
-								accumulator <= alu_result;
+								accumulator <= alu_result_wide;
 								exec_done 	<= 1;
 								exec_state 	<= 2;
 							end
@@ -2131,7 +2138,7 @@ module dsp_core_2 #(
 						
 						1: begin
 							if (alu_result_valid) begin
-								accumulator <= alu_result;
+								accumulator <= alu_result_wide;
 								exec_done 	<= 1;
 								exec_state 	<= 2;
 							end
@@ -2178,9 +2185,23 @@ module dsp_core_2 #(
 						end
 						
 						1: begin
-							result <= (saturate) ? accumulator[data_width - 1 : 0] : accumulator_sat[data_width - 1 : 0];
+							result <= (saturate) ? accumulator_sat[data_width - 1 : 0] : accumulator[data_width - 1 : 0];
 							write_result <= 1;
 							exec_done <= 1;
+						end
+					endcase
+				end
+				
+				`BLOCK_INSTR_MOV_UACC: begin
+					case (exec_state)
+						0: begin
+							exec_state <= 1;
+						end
+						
+						1: begin
+							result 		 <= accumulator[2 * data_width - 1 : data_width];
+							write_result <= 1;
+							exec_done 	 <= 1;
 						end
 					endcase
 				end
@@ -2198,6 +2219,21 @@ module dsp_core_2 #(
 					endcase
 				end
 				
+				`BLOCK_INSTR_ACC: begin
+					case (exec_state)
+						0: begin
+							exec_state <= 1;
+						end
+					
+						1: begin
+							if (src_a_valid) begin
+								accumulator <= (no_shift) ? accumulator + {{(data_width){src_a_latched[data_width-1]}}, src_a_latched} : accumulator + {{(data_width){src_a_latched[data_width - 1]}}, src_a_latched};
+								exec_done <= 1;
+							end
+						end
+					endcase
+				end
+				
 				`BLOCK_INSTR_LOAD_ACC: begin
 					case (exec_state)
 						0: begin
@@ -2205,10 +2241,12 @@ module dsp_core_2 #(
 							exec_state <= 1;
 						end
 						
-						1: exec_state <= 2;
+						1: begin
+							mem_read_addr <= res_addr + 1;
+							exec_state <= 2;
+						end
 						
 						2: begin
-							mem_read_addr <= res_addr + 1;
 							accumulator <= {accumulator[data_width - 1 : 0], mem_read_val};
 							exec_state <= 3;
 						end
@@ -2224,17 +2262,17 @@ module dsp_core_2 #(
 				`BLOCK_INSTR_SAVE_ACC: begin
 					case (exec_state)
 						0: begin
-							mem_write_addr <= res_addr;
-							mem_write_val <= accumulator[2 * data_width - 1 : data_width];
-							mem_write_enable <= 1;
-							exec_state <= 1;
+							mem_write_addr 		<= res_addr;
+							mem_write_val 		<= accumulator[2 * data_width - 1 : data_width];
+							mem_write_enable 	<= 1;
+							exec_state 			<= 1;
 						end
 						1: begin
-							mem_write_addr <= res_addr + 1;
-							mem_write_val <= accumulator[data_width - 1 : 0];
-							mem_write_enable <= 1;
-							exec_state <= 2;
-							exec_done <= 1;
+							mem_write_addr 		<= res_addr + 1;
+							mem_write_val 		<= accumulator[data_width - 1 : 0];
+							mem_write_enable 	<= 1;
+							exec_state 			<= 2;
+							exec_done 			<= 1;
 						end
 					endcase
 				end
@@ -2328,9 +2366,11 @@ module dsp_core_2 #(
 				`BLOCK_INSTR_FRAC_DELAY: begin
 					case (exec_state)
 						0: begin
-							delay_req_arg <= accumulator[2*data_width-1] ? 0 : accumulator[2*data_width-1:data_width];
+							delay_req_arg 	 <= accumulator[2*data_width-1] ? 0 : upper_accumulator;
 							delay_req_handle <= res_addr;
-							delay_read_req <= 1;
+							delay_read_req 	 <= 1;
+							
+							exec_state <= 1;
 						end
 						
 						1: begin
@@ -2339,20 +2379,22 @@ module dsp_core_2 #(
 						
 						2: begin
 							if (delay_read_ready) begin
-								alu_a  <= delay_req_data_in;
+								alu_a <= delay_req_data_in;
 								
-								delay_req_arg <= accumulator[2*data_width-1:data_width]+1;
-								delay_read_req <= 1;
-								exec_state <= 3;
+								delay_req_arg 	<= delay_req_arg + 1;
+								delay_read_req 	<= 1;
+								exec_state 		<= 3;
 							end
 						end
 						
 						3: begin
 							if (delay_read_ready) begin
-								alu_b <= delay_req_data_in;
-								alu_c <= accumulator[data_width - 1 : 0];
-								alu_op <= `ALU_OP_LINTERP;
-								alu_trigger <= 1;
+								alu_b			<= delay_req_data_in;
+								delay_read_req 	<= 0;
+								alu_c 			<= lower_accumulator;
+								alu_op 			<= `ALU_OP_LINTERP;
+								alu_trigger 	<= 1;
+								
 								exec_state <= 4;
 							end
 						end
@@ -2362,8 +2404,9 @@ module dsp_core_2 #(
 								alu_result_latched <= alu_result;
 								
 								write_alu_result <= 1;
-								exec_done 	 <= 1;
-								exec_state 	 <= 5;
+								
+								exec_done  <= 1;
+								exec_state <= 5;
 							end
 						end
 					endcase
