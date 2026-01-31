@@ -161,7 +161,7 @@ module pipeline_seq
 		end
 	endgenerate
 	
-	dsp_core_2 #(.data_width(data_width), .n_blocks(n_blocks), .n_channels(n_channels), .n_registers(n_block_registers)) core (
+	dsp_core #(.data_width(data_width), .n_blocks(n_blocks), .n_channels(n_channels), .n_registers(n_block_registers)) core (
 		.clk(clk),
 		.reset(reset),
 		
