@@ -92,15 +92,28 @@ module dsp_core_2 #(
 	reg mem_write_enable;
 	
 	always @(posedge clk) begin
-		instr_read_val 	 <=     instrs[instr_read_addr  ];
-		channel_read_val <=   channels[channel_read_addr];
-		reg_read_val 	 <= block_regs[reg_read_addr    ];
-		
-		if   (instr_write_enable)     instrs[instr_write_addr  ] <=   instr_write_val;
-		if (channel_write_enable)   channels[channel_write_addr] <= channel_write_val;
-		if     (reg_write_enable) block_regs[reg_write_addr    ] <=     reg_write_val;
-		if     (mem_write_enable) 		 mem[mem_write_addr    ] <=     mem_write_val;
-	end
+		instr_read_val <= instrs[instr_read_addr];
+		if (instr_write_enable)
+            instrs[instr_write_addr] <= instr_write_val;
+    end
+
+    always @(posedge clk) begin
+		channel_read_val <= channels[channel_read_addr];
+		if (channel_write_enable)
+            channels[channel_write_addr] <= channel_write_val;
+    end
+
+    always @(posedge clk) begin
+		reg_read_val <= block_regs[reg_read_addr];
+		if (reg_write_enable)
+            block_regs[reg_write_addr] <= reg_write_val;
+    end
+
+    always @(posedge clk) begin
+		mem_read_val <= mem[mem_read_addr];
+		if (mem_write_enable)
+            mem[mem_write_addr] <= mem_write_val;
+    end
 	
 	reg [31 : 0] instr;
 	
@@ -249,7 +262,17 @@ module dsp_core_2 #(
 	reg signed [data_width - 1 : 0] src_c_latched;
 	
 	always @(posedge clk) begin
-		if (reset | full_reset | exec_done | (tick & enable)) begin
+		if (reset) begin
+			latch_src_a_next <= 0;
+			latch_src_a		 <= 0;
+			src_a_valid	 	 <= 0;
+			latch_src_b_next <= 0;
+			latch_src_b		 <= 0;
+			src_b_valid	 	 <= 0;
+			latch_src_c_next <= 0;
+			latch_src_c		 <= 0;
+			src_c_valid	 	 <= 0;
+        end else if (full_reset | exec_done | (tick & enable)) begin
 			latch_src_a_next <= 0;
 			latch_src_a		 <= 0;
 			src_a_valid	 	 <= 0;
@@ -317,49 +340,23 @@ module dsp_core_2 #(
 	reg [$clog2(n_blocks) 	 : 0] blk_reset_ctr;
 	
 	always @(posedge clk) begin
-		latch_next_instr <= 0;
-		block_boundary   <= 0;
-		
-		instr_write_enable   	<= 0;
-		channel_write_enable 	<= 0;
-		reg_write_enable     	<= 0;
-		
-		latch_instr <= 0;
-		latch_instr_next <= 0;
-		latch_instr_now <= 0;
-		
-		latch_next_instr <= 0;
-		latch_next_instr_next <= 0;
-		latch_next_instr_now <= 0;
-		
-		if (latch_instr_now) instr <= instr_read_val;
-		if (latch_instr_next) latch_instr_now <= 1;
-		if (latch_instr) begin
-			instr_read_addr <= current_block;
-			latch_instr_next <= 1;
-			latch_next_instr <= 1;
-		end
-		
-		if (latch_next_instr_now) next_instr <= instr_read_val;
-		if (latch_next_instr_next) latch_next_instr_now <= 1;
-		if (latch_next_instr) begin
-			instr_read_addr <= next_block;
-			latch_next_instr_next <= 1;
-		end
-	
-		if (reset || full_reset) begin
-			if (full_reset || resetting) begin
-				resetting <= 1;
-				
-				blk_reset_ctr <= 0;
-				
-				ready <= 0;
-			end else begin
-				ready		<= 1;
-				latch_instr <= 1;
-			end
+		if (reset) begin
+			ready		<= 1;
+			latch_instr <= 1;
 			
 			executing 	   <= 0;
+			block_boundary <= 0;
+			
+			current_block <= 0;
+			state 		  <= 0;
+        end else if (full_reset) begin
+            resetting <= 1;
+				
+            blk_reset_ctr <= 0;
+            
+            ready <= 0;
+            
+            executing 	   <= 0;
 			block_boundary <= 0;
 			
 			current_block <= 0;
@@ -382,95 +379,127 @@ module dsp_core_2 #(
 				ready		<= 1;
 			end
 			
-		end else if (command_reg_write || command_instr_write) begin
-			if (command_reg_write) begin
-				reg_write_addr   <= {command_block_target, command_reg_target[0]};
-				reg_write_val    <= command_reg_write_val;
-				reg_write_enable <= 1;
-			end
-			
-			if (command_instr_write) begin
-				instr_write_addr   <= command_block_target;
-				instr_write_val    <= command_instr_write_val;
-				instr_write_enable <= 1;
-				
-				last_block <= (command_block_target > last_block) ? command_block_target : last_block;
-				latch_instr <= 1;
-			end
 		end else begin
-			case (state)
-				0: begin
-					if (tick && enable) begin
-						channel_write_addr 	 <= 0;
-						channel_write_val  	 <= sample_in;
-						channel_write_enable <= 1;
-						latch_next_instr <= 1;
-						
-						executing <= 1;
-						state <= 1;
-						ready <= 0;
-					end
-				end
-				
-				1: begin
-					state <= 2;
-				end
-				
-				2: begin
-					if (exec_done) begin
-						block_boundary 	 <= 1;
-						latch_next_instr <= 1;
-						instr 			 <= next_instr;
-						current_block 	 <= next_block;
-						
-						state 			 <= 1;
-						
-						channel_write_addr <= dest;
-						
-						if (write_result) begin
-							channel_write_val 	 <= result_sat;
-							channel_write_enable <= 1;
-						end
-						
-						if (write_alu_result) begin
-							channel_write_val 	 <= alu_result_latched;
-							channel_write_enable <= 1;
-						end
-						
-						if (write_lut_result) begin
-							channel_write_val 	 <= lut_result_latched;
-							channel_write_enable <= 1;
-						end
-						
-						if (write_delay_result) begin
-							channel_write_val 	 <= delay_result_latched;
-							channel_write_enable <= 1;
-						end
-						
-						if (write_mem_result) begin
-							channel_write_val 	 <= mem_result_latched;
-							channel_write_enable <= 1;
-						end
-						
-						if (current_block == last_block) begin
-							state <= 3;
-						end
-					end
-				end
-				
-				3: begin
-					state <= 4;
-				end
-				
-				4: begin
-					ready <= 1;
-					executing <= 0;
-					sample_out <= channels[0];
-					state <= 0;
-				end
-			endcase
-		end
-	end
+            latch_next_instr <= 0;
+            block_boundary   <= 0;
+
+            instr_write_enable   	<= 0;
+            channel_write_enable 	<= 0;
+            reg_write_enable     	<= 0;
+
+            latch_instr <= 0;
+            latch_instr_next <= 0;
+            latch_instr_now <= 0;
+
+            latch_next_instr <= 0;
+            latch_next_instr_next <= 0;
+            latch_next_instr_now <= 0;
+
+            if (latch_instr_now) instr <= instr_read_val;
+            if (latch_instr_next) latch_instr_now <= 1;
+            if (latch_instr) begin
+                instr_read_addr <= current_block;
+                latch_instr_next <= 1;
+                latch_next_instr <= 1;
+            end
+
+            if (latch_next_instr_now) next_instr <= instr_read_val;
+            if (latch_next_instr_next) latch_next_instr_now <= 1;
+            if (latch_next_instr) begin
+                instr_read_addr <= next_block;
+                latch_next_instr_next <= 1;
+            end
+
+            if (command_reg_write || command_instr_write) begin
+                if (command_reg_write) begin
+                    reg_write_addr   <= {command_block_target, command_reg_target[0]};
+                    reg_write_val    <= command_reg_write_val;
+                    reg_write_enable <= 1;
+                end
+                
+                if (command_instr_write) begin
+                    instr_write_addr   <= command_block_target;
+                    instr_write_val    <= command_instr_write_val;
+                    instr_write_enable <= 1;
+                    
+                    last_block <= (command_block_target > last_block) ? command_block_target : last_block;
+                    latch_instr <= 1;
+                end
+            end else begin
+                case (state)
+                    0: begin
+                        if (tick && enable) begin
+                            channel_write_addr 	 <= 0;
+                            channel_write_val  	 <= sample_in;
+                            channel_write_enable <= 1;
+                            latch_next_instr <= 1;
+                            
+                            executing <= 1;
+                            state <= 1;
+                            ready <= 0;
+                        end
+                    end
+                    
+                    1: begin
+                        state <= 2;
+                    end
+                    
+                    2: begin
+                        if (exec_done) begin
+                            block_boundary 	 <= 1;
+                            latch_next_instr <= 1;
+                            instr 			 <= next_instr;
+                            current_block 	 <= next_block;
+                            
+                            state 			 <= 1;
+                            
+                            channel_write_addr <= dest;
+                            
+                            if (write_result) begin
+                                channel_write_val 	 <= result_sat;
+                                channel_write_enable <= 1;
+                            end
+                            
+                            if (write_alu_result) begin
+                                channel_write_val 	 <= alu_result_latched;
+                                channel_write_enable <= 1;
+                            end
+                            
+                            if (write_lut_result) begin
+                                channel_write_val 	 <= lut_result_latched;
+                                channel_write_enable <= 1;
+                            end
+                            
+                            if (write_delay_result) begin
+                                channel_write_val 	 <= delay_result_latched;
+                                channel_write_enable <= 1;
+                            end
+                            
+                            if (write_mem_result) begin
+                                channel_write_val 	 <= mem_result_latched;
+                                channel_write_enable <= 1;
+                            end
+                            
+                            if (current_block == last_block) begin
+                                state <= 3;
+                            end
+                        end
+                    end
+                    
+                    3: begin
+                        state <= 4;
+                    end
+                    
+                    4: begin
+                        ready <= 1;
+                        executing <= 0;
+                        sample_out <= channels[0];
+                        state <= 0;
+                    end
+                endcase
+            end
+        end
+    end
 	
 	reg [7:0] exec_state;
 	
@@ -503,24 +532,53 @@ module dsp_core_2 #(
 	wire signed [data_width - 1 : 0] result_sat = saturate ? ((result > sat_max) ? sat_max : ((result < sat_min) ? sat_min : result)) : result;
 	reg write_result;
 	
-	always @(posedge clk) begin
-		write_result <= 0;
-		alu_trigger  <= 0;
-		
-		write_alu_result 	<= 0;
-		write_lut_result 	<= 0;
-		write_delay_result 	<= 0;
-		write_mem_result 	<= 0;
+    reg alu_a_hold = 0;
+    reg alu_b_hold = 0;
 
-        mem_write_enable    <= 0;
-		
-		if (reset | full_reset | exec_done | block_boundary | tick) begin
+    reg alu_a_latch_delay = 0;
+    reg alu_b_latch_delay = 0;
+
+	always @(posedge clk) begin
+		if (reset) begin
 			exec_done  <= 0;
 			exec_state <= 0;
+
+            write_result <= 0;
+            alu_trigger  <= 0;
+            
+            write_alu_result 	<= 0;
+            write_lut_result 	<= 0;
+            write_delay_result 	<= 0;
+            write_mem_result 	<= 0;
+
+            mem_write_enable    <= 0;
+        end else if (full_reset) begin
+            exec_done  <= 0;
+			exec_state <= 0;
+
+            write_result <= 0;
+            alu_trigger  <= 0;
+            
+            write_alu_result 	<= 0;
+            write_lut_result 	<= 0;
+            write_delay_result 	<= 0;
+            write_mem_result 	<= 0;
+
+            mem_write_enable    <= 0;
 
             if (full_reset)
                 mem_reset_ctr <= 0;
 		end else if (resetting) begin
+            write_result <= 0;
+            alu_trigger  <= 0;
+            
+            write_alu_result 	<= 0;
+            write_lut_result 	<= 0;
+            write_delay_result 	<= 0;
+            write_mem_result 	<= 0;
+
+            mem_write_enable    <= 0;
+
 			if (mem_reset_ctr < memory_size) begin
 				mem_write_addr 	 <= mem_reset_ctr;
 				mem_write_val 	 <= 0;
@@ -528,532 +586,547 @@ module dsp_core_2 #(
 				
 				mem_reset_ctr <= mem_reset_ctr + 1;
 			end
-        end else if (executing) begin
-			case (operation)
-				`BLOCK_INSTR_NOP: begin
-					if (exec_state == 0) exec_state <= 1;
-					else exec_done <= 1;
-				end
-			
-				`BLOCK_INSTR_ADD: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid && src_b_valid) begin
-								alu_op <= `ALU_OP_ADD;
-								alu_a  <= src_a_latched;
-								alu_b  <= src_b_latched;
-								exec_state <= 1;
-							end
-						end
-						1: exec_state <= 2;
-						2: begin
-							alu_result_latched <= alu_result;
-							
-							exec_done 	 <= 1;
-							write_alu_result <= 1;
-							exec_state   <= 3;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_SUB: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid && src_b_valid) begin
-								alu_op <= `ALU_OP_SUB;
-								alu_a  <= src_a_latched;
-								alu_b  <= src_b_latched;
-								exec_state <= 1;
-							end
-						end
-						1: exec_state <= 2;
-						2: begin
-							alu_result_latched <= alu_result;
-							write_alu_result <= 1;
-							
-							exec_done 	 <= 1;
-							exec_state   <= 3;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_CLAMP: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid && src_b_valid) begin
-								alu_op <= `ALU_OP_CLAMP;
-								alu_a  <= src_a_latched;
-								alu_b  <= src_b_latched;
-								exec_state <= 1;
-							end
-						end
-						1: exec_state <= 2;
-						2: begin
-							alu_result_latched <= alu_result;
-							write_alu_result <= 1;
-							
-							exec_done 	 <= 1;
-							exec_state   <= 3;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_ABS: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid && src_b_valid) begin
-								alu_op <= `ALU_OP_ABS;
-								alu_a  <= src_a_latched;
-								alu_b  <= src_b_latched;
-								exec_state <= 1;
-							end
-						end
-						1: exec_state <= 2;
-						2: begin
-							alu_result_latched <= alu_result;
-							write_alu_result <= 1;
-							
-							exec_done 	 <= 1;
-							exec_state   <= 3;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_LSH: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid) begin
-								alu_op <= `ALU_OP_LSH;
-								alu_a  <= src_a_latched;
-								alu_b  <= src_b;
-								alu_trigger <= 1;
-								exec_state  <= 1;
-							end
-						end
-						1: begin
-							if (alu_result_valid) begin
-								alu_result_latched <= alu_result;
-								write_alu_result <= 1;
-								exec_done 	 <= 1;
-								exec_state	 <= 2;
-							end
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_RSH: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid) begin
-								alu_op <= `ALU_OP_RSH;
-								alu_a  <= src_a_latched;
-								alu_b  <= src_b;
-								alu_trigger <= 1;
-								exec_state  <= 1;
-							end
-						end
-						1: begin
-							if (alu_result_valid) begin
-								alu_result_latched <= alu_result;
-								write_alu_result <= 1;
-								exec_done 	 <= 1;
-								exec_state	 <= 2;
-							end
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_ARSH: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid) begin
-								alu_op <= `ALU_OP_ARSH;
-								alu_a  <= src_a_latched;
-								alu_b  <= src_b;
-								alu_trigger <= 1;
-								exec_state  <= 1;
-							end
-						end
-						1: begin
-							if (alu_result_valid) begin
-								alu_result_latched <= alu_result;
-								write_alu_result <= 1;
-								exec_done 	 <= 1;
-								exec_state	 <= 2;
-							end
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_MUL: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid && src_b_valid) begin
-								alu_op 		<= `ALU_OP_MUL;
-								alu_a  		<= src_a_latched;
-								alu_b  		<= src_b_latched;
-								alu_shift 	<= shift;
-								alu_trigger <= 1;
-								
-								exec_state <= 1;
-							end
-						end
-						
-						1: begin
-							if (alu_result_valid) begin
-								alu_result_latched <= alu_result;
-								write_alu_result <= 1;
-								exec_done 	 <= 1;
-								exec_state	 <= 2;
-							end
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_MADD: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid && src_b_valid && src_c_valid) begin
-								alu_op 		<= `ALU_OP_MADD;
-								alu_a  		<= src_a_latched;
-								alu_b  		<= src_b_latched;
-								alu_c  		<= src_c_latched;
-								alu_shift 	<= shift;
-								alu_trigger <= 1;
-								
-								exec_state <= 1;
-							end
-						end
-						
-						1: begin
-							if (alu_result_valid) begin
-								alu_result_latched <= alu_result;
-								write_alu_result <= 1;
-								exec_done 	 <= 1;
-								exec_state	 <= 2;
-							end
-						end
-					endcase
-				end
-					
-				`BLOCK_INSTR_MACZ: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid && src_b_valid) begin
-								alu_op 		<= `ALU_OP_MAC;
-								alu_a  		<= src_a_latched;
-								alu_b  		<= src_b_latched;
-								alu_b_wide  <= 0;
-								alu_no_shift<= no_shift;
-								alu_shift 	<= shift;
-								alu_trigger <= 1;
-								
-								exec_state <= 1;
-							end
-						end
-						
-						1: begin
-							if (alu_result_valid) begin
-								accumulator <= alu_result_wide;
-								exec_done 	<= 1;
-								exec_state 	<= 2;
-							end
-						end
-					endcase
-				end
-					
-				`BLOCK_INSTR_MAC: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid && src_b_valid) begin
-								alu_op 		<= `ALU_OP_MAC;
-								alu_a  		<= src_a_latched;
-								alu_b  		<= src_b_latched;
-								alu_b_wide	<= accumulator;
-								alu_shift 	<= shift;
-								alu_trigger <= 1;
-								
-								exec_state <= 1;
-							end
-						end
-						
-						1: begin
-							if (alu_result_valid) begin
-								accumulator <= alu_result_wide;
-								exec_done 	<= 1;
-								exec_state 	<= 2;
-							end
-						end
-					endcase
-				end
-					
-				`BLOCK_INSTR_LINTERP: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid && src_b_valid && src_c_valid) begin
-								alu_op 		<= `ALU_OP_LINTERP;
-								alu_a  		<= src_a_latched;
-								alu_b  		<= src_b_latched;
-								alu_c 		<= src_c_latched;
-								alu_trigger <= 1;
-								
-								exec_state <= 1;
-							end
-						end
-						
-						1: begin
-							if (alu_result_valid) begin
-								accumulator <= alu_result;
-								exec_done 	<= 1;
-								exec_state 	<= 2;
-							end
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_MOV: begin
-					if (src_a_valid) begin
-						result 		 <= src_a_latched;
-						exec_done 	 <= 1;
-						write_result <= 1;
-					end
-				end
-				
-				`BLOCK_INSTR_MOV_ACC: begin
-					case (exec_state)
-						0: begin
-							exec_state <= 1;
-						end
-						
-						1: begin
-							result <= (saturate) ? accumulator_sat[data_width - 1 : 0] : accumulator[data_width - 1 : 0];
-							write_result <= 1;
-							exec_done <= 1;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_MOV_UACC: begin
-					case (exec_state)
-						0: begin
-							exec_state <= 1;
-						end
-						
-						1: begin
-							result 		 <= accumulator[2 * data_width - 1 : data_width];
-							write_result <= 1;
-							exec_done 	 <= 1;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_CLEAR_ACC: begin
-					case (exec_state)
-						0: begin
-							exec_state <= 1;
-							accumulator <= 0;
-						end
-						
-						1: begin
-							exec_done <= 1;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_ACC: begin
-					case (exec_state)
-						0: begin
-							exec_state <= 1;
-						end
-					
-						1: begin
-							if (src_a_valid) begin
-								accumulator <= (no_shift) ? accumulator + {{(data_width){src_a_latched[data_width-1]}}, src_a_latched} : accumulator + {{(data_width){src_a_latched[data_width - 1]}}, src_a_latched};
-								exec_done <= 1;
-							end
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_LOAD_ACC: begin
-					case (exec_state)
-						0: begin
-							mem_read_addr <= res_addr;
-							exec_state <= 1;
-						end
-						
-						1: begin
-							mem_read_addr <= res_addr + 1;
-							exec_state <= 2;
-						end
-						
-						2: begin
-							accumulator <= {accumulator[data_width - 1 : 0], mem_read_val};
-							exec_state <= 3;
-						end
-						
-						3: begin
-							accumulator <= {accumulator[data_width - 1 : 0], mem_read_val};
-							exec_done 	<= 1;
-							exec_state 	<= 4;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_SAVE_ACC: begin
-					case (exec_state)
-						0: begin
-							mem_write_addr 		<= res_addr;
-							mem_write_val 		<= accumulator[2 * data_width - 1 : data_width];
-							mem_write_enable 	<= 1;
-							exec_state 			<= 1;
-						end
-						1: begin
-							mem_write_addr 		<= res_addr + 1;
-							mem_write_val 		<= accumulator[data_width - 1 : 0];
-							mem_write_enable 	<= 1;
-							exec_state 			<= 2;
-							exec_done 			<= 1;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_SAVE: begin
-					if (src_a_valid) begin
-						mem_write_addr   <= res_addr;
-						mem_write_val    <= src_a_latched;
-						mem_write_enable <= 1;
-						
-						exec_done 	 <= 1;
-					end
-				end
-				
-				`BLOCK_INSTR_LOAD: begin
-					case (exec_state)
-						0: begin
-							mem_read_addr <= res_addr;
-							exec_state <= 1;
-						end
-						1: exec_state <= 2;
-						2: begin
-							mem_result_latched <= mem_read_val;
-							write_mem_result <= 1;
-							exec_done <= 1;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_LUT: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid) begin
-								lut_handle 	<= res_addr;
-								lut_arg		<= src_a_latched;
-								lut_req		<= 1;
-								exec_state 	<= 1;
-							end
-						end
-						1: exec_state <= 2;
-						2: begin
-							if (lut_ready) begin
-								lut_result_latched <= lut_data;
-								write_lut_result <= 1;
-								exec_done <= 1;
-								lut_req <= 0;
-							end
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_DELAY_READ: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid) begin
-								delay_req_handle 	<= res_addr;
-								delay_req_arg		<= src_a_latched;
-								delay_read_req		<= 1;
-								exec_state 			<= 1;
-							end
-						end
-						1: exec_state <= 2;
-						2: begin
-							if (delay_read_ready) begin
-								delay_result_latched <= delay_req_data_in;
-								write_delay_result 	<= 1;
-								exec_done 		<= 1;
-								delay_read_req 	<= 0;
-							end
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_DELAY_WRITE: begin
-					case (exec_state)
-						0: begin
-							if (src_a_valid) begin
-								delay_req_handle 	<= res_addr;
-								delay_req_arg		<= src_a_latched;
-								delay_write_req		<= 1;
-								exec_state 			<= 1;
-							end
-						end
-						1: begin
-							delay_write_req <= 0;
-							exec_done		<= 1;
-						end
-					endcase
-				end
-				
-				`BLOCK_INSTR_FRAC_DELAY: begin
-					case (exec_state)
-						0: begin
-							delay_req_arg 	 <= accumulator[2*data_width-1] ? 0 : upper_accumulator;
-							delay_req_handle <= res_addr;
-							delay_read_req 	 <= 1;
-							
-							exec_state <= 1;
-						end
-						
-						1: begin
-							exec_state <= 2;
-						end
-						
-						2: begin
-							if (delay_read_ready) begin
-								alu_a <= delay_req_data_in;
-								
-								delay_req_arg 	<= delay_req_arg + 1;
-								delay_read_req 	<= 1;
-								exec_state 		<= 3;
-							end
-						end
-						
-						3: begin
-							if (delay_read_ready) begin
-								alu_b			<= delay_req_data_in;
-								delay_read_req 	<= 0;
-								alu_c 			<= lower_accumulator;
-								alu_op 			<= `ALU_OP_LINTERP;
-								alu_trigger 	<= 1;
-								
-								exec_state <= 4;
-							end
-						end
-						
-						4: begin
-							if (alu_result_valid) begin
-								alu_result_latched <= alu_result;
-								
-								write_alu_result <= 1;
-								
-								exec_done  <= 1;
-								exec_state <= 5;
-							end
-						end
-					endcase
-				end
-			endcase
-		end
-	end
+        end else begin
+            write_result <= 0;
+            alu_trigger  <= 0;
+            
+            write_alu_result 	<= 0;
+            write_lut_result 	<= 0;
+            write_delay_result 	<= 0;
+            write_mem_result 	<= 0;
+
+            mem_write_enable    <= 0;
+
+            if (!alu_a_hold) begin
+                alu_a <= src_a_latched;
+                if (alu_a_latch_delay)
+                    alu_a <= delay_req_data_in;
+            end
+
+            if (!alu_b_hold) begin
+                alu_b <= src_b_latched;
+                if (alu_b_latch_delay)
+                    alu_b <= delay_req_data_in;
+            end
+
+            delay_req_handle <= res_addr;
+
+            lut_handle  <= res_addr;
+            lut_arg		<= src_a_latched;
+
+            if (exec_done | block_boundary | tick) begin
+                exec_done  <= 0;
+                exec_state <= 0;
+            end else if (executing) begin
+                case (operation)
+                    `BLOCK_INSTR_NOP: begin
+                        if (exec_state == 0) exec_state <= 1;
+                        else exec_done <= 1;
+                    end
+                
+                    `BLOCK_INSTR_ADD: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid && src_b_valid) begin
+                                    alu_op <= `ALU_OP_ADD;
+                                    exec_state <= 1;
+                                end
+                            end
+                            1: exec_state <= 2;
+                            2: begin
+                                alu_result_latched <= alu_result;
+                                
+                                exec_done 	 <= 1;
+                                write_alu_result <= 1;
+                                exec_state   <= 3;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_SUB: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid && src_b_valid) begin
+                                    alu_op <= `ALU_OP_SUB;
+                                    exec_state <= 1;
+                                end
+                            end
+                            1: exec_state <= 2;
+                            2: begin
+                                alu_result_latched <= alu_result;
+                                write_alu_result <= 1;
+                                
+                                exec_done 	 <= 1;
+                                exec_state   <= 3;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_CLAMP: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid && src_b_valid) begin
+                                    alu_op <= `ALU_OP_CLAMP;
+                                    exec_state <= 1;
+                                end
+                            end
+                            1: exec_state <= 2;
+                            2: begin
+                                alu_result_latched <= alu_result;
+                                write_alu_result <= 1;
+                                
+                                exec_done 	 <= 1;
+                                exec_state   <= 3;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_ABS: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid && src_b_valid) begin
+                                    alu_op <= `ALU_OP_ABS;
+                                    exec_state <= 1;
+                                end
+                            end
+                            1: exec_state <= 2;
+                            2: begin
+                                alu_result_latched <= alu_result;
+                                write_alu_result <= 1;
+                                
+                                exec_done 	 <= 1;
+                                exec_state   <= 3;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_LSH: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid) begin
+                                    alu_op <= `ALU_OP_LSH;
+                                    alu_b  <= src_b;
+                                    alu_trigger <= 1;
+                                    exec_state  <= 1;
+                                end
+                            end
+                            1: begin
+                                if (alu_result_valid) begin
+                                    alu_result_latched <= alu_result;
+                                    write_alu_result <= 1;
+                                    exec_done 	 <= 1;
+                                    exec_state	 <= 2;
+                                end
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_RSH: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid) begin
+                                    alu_op <= `ALU_OP_RSH;
+                                    alu_b  <= src_b;
+                                    alu_trigger <= 1;
+                                    exec_state  <= 1;
+                                end
+                            end
+                            1: begin
+                                if (alu_result_valid) begin
+                                    alu_result_latched <= alu_result;
+                                    write_alu_result <= 1;
+                                    exec_done 	 <= 1;
+                                    exec_state	 <= 2;
+                                end
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_ARSH: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid) begin
+                                    alu_op <= `ALU_OP_ARSH;
+                                    alu_b  <= src_b;
+                                    alu_trigger <= 1;
+                                    exec_state  <= 1;
+                                end
+                            end
+                            1: begin
+                                if (alu_result_valid) begin
+                                    alu_result_latched <= alu_result;
+                                    write_alu_result <= 1;
+                                    exec_done 	 <= 1;
+                                    exec_state	 <= 2;
+                                end
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_MUL: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid && src_b_valid) begin
+                                    alu_op 		<= `ALU_OP_MUL;
+                                    alu_shift 	<= shift;
+                                    alu_trigger <= 1;
+                                    
+                                    exec_state <= 1;
+                                end
+                            end
+                            
+                            1: begin
+                                if (alu_result_valid) begin
+                                    alu_result_latched <= alu_result;
+                                    write_alu_result <= 1;
+                                    exec_done 	 <= 1;
+                                    exec_state	 <= 2;
+                                end
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_MADD: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid && src_b_valid && src_c_valid) begin
+                                    alu_op 		<= `ALU_OP_MADD;
+                                    alu_c  		<= src_c_latched;
+                                    alu_shift 	<= shift;
+                                    alu_trigger <= 1;
+                                    
+                                    exec_state <= 1;
+                                end
+                            end
+                            
+                            1: begin
+                                if (alu_result_valid) begin
+                                    alu_result_latched <= alu_result;
+                                    write_alu_result <= 1;
+                                    exec_done 	 <= 1;
+                                    exec_state	 <= 2;
+                                end
+                            end
+                        endcase
+                    end
+                        
+                    `BLOCK_INSTR_MACZ: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid && src_b_valid) begin
+                                    alu_op 		<= `ALU_OP_MAC;
+                                    alu_b_wide  <= 0;
+                                    alu_no_shift<= no_shift;
+                                    alu_shift 	<= shift;
+                                    alu_trigger <= 1;
+                                    
+                                    exec_state <= 1;
+                                end
+                            end
+                            
+                            1: begin
+                                if (alu_result_valid) begin
+                                    accumulator <= alu_result_wide;
+                                    exec_done 	<= 1;
+                                    exec_state 	<= 2;
+                                end
+                            end
+                        endcase
+                    end
+                        
+                    `BLOCK_INSTR_MAC: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid && src_b_valid) begin
+                                    alu_op 		<= `ALU_OP_MAC;
+                                    alu_b_wide	<= accumulator;
+                                    alu_shift 	<= shift;
+                                    alu_trigger <= 1;
+                                    
+                                    exec_state <= 1;
+                                end
+                            end
+                            
+                            1: begin
+                                if (alu_result_valid) begin
+                                    accumulator <= alu_result_wide;
+                                    exec_done 	<= 1;
+                                    exec_state 	<= 2;
+                                end
+                            end
+                        endcase
+                    end
+                        
+                    `BLOCK_INSTR_LINTERP: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid && src_b_valid && src_c_valid) begin
+                                    alu_op 		<= `ALU_OP_LINTERP;
+                                    alu_c 		<= src_c_latched;
+                                    alu_trigger <= 1;
+                                    
+                                    exec_state <= 1;
+                                end
+                            end
+                            
+                            1: begin
+                                if (alu_result_valid) begin
+                                    accumulator <= alu_result;
+                                    exec_done 	<= 1;
+                                    exec_state 	<= 2;
+                                end
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_MOV: begin
+                        if (src_a_valid) begin
+                            result 		 <= src_a_latched;
+                            exec_done 	 <= 1;
+                            write_result <= 1;
+                        end
+                    end
+                    
+                    `BLOCK_INSTR_MOV_ACC: begin
+                        case (exec_state)
+                            0: begin
+                                exec_state <= 1;
+                            end
+                            
+                            1: begin
+                                result <= (saturate) ? accumulator_sat[data_width - 1 : 0] : accumulator[data_width - 1 : 0];
+                                write_result <= 1;
+                                exec_done <= 1;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_MOV_UACC: begin
+                        case (exec_state)
+                            0: begin
+                                exec_state <= 1;
+                            end
+                            
+                            1: begin
+                                result 		 <= accumulator[2 * data_width - 1 : data_width];
+                                write_result <= 1;
+                                exec_done 	 <= 1;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_CLEAR_ACC: begin
+                        case (exec_state)
+                            0: begin
+                                exec_state <= 1;
+                                accumulator <= 0;
+                            end
+                            
+                            1: begin
+                                exec_done <= 1;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_ACC: begin
+                        case (exec_state)
+                            0: begin
+                                exec_state <= 1;
+                            end
+                        
+                            1: begin
+                                if (src_a_valid) begin
+                                    accumulator <= (no_shift) ? accumulator + {{(data_width){src_a_latched[data_width-1]}}, src_a_latched} : accumulator + {{(data_width){src_a_latched[data_width - 1]}}, src_a_latched};
+                                    exec_done <= 1;
+                                end
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_LOAD_ACC: begin
+                        case (exec_state)
+                            0: begin
+                                mem_read_addr <= res_addr;
+                                exec_state <= 1;
+                            end
+                            
+                            1: begin
+                                mem_read_addr <= res_addr + 1;
+                                exec_state <= 2;
+                            end
+                            
+                            2: begin
+                                accumulator <= {accumulator[data_width - 1 : 0], mem_read_val};
+                                exec_state <= 3;
+                            end
+                            
+                            3: begin
+                                accumulator <= {accumulator[data_width - 1 : 0], mem_read_val};
+                                exec_done 	<= 1;
+                                exec_state 	<= 4;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_SAVE_ACC: begin
+                        case (exec_state)
+                            0: begin
+                                mem_write_addr 		<= res_addr;
+                                mem_write_val 		<= accumulator[2 * data_width - 1 : data_width];
+                                mem_write_enable 	<= 1;
+                                exec_state 			<= 1;
+                            end
+                            1: begin
+                                mem_write_addr 		<= res_addr + 1;
+                                mem_write_val 		<= accumulator[data_width - 1 : 0];
+                                mem_write_enable 	<= 1;
+                                exec_state 			<= 2;
+                                exec_done 			<= 1;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_SAVE: begin
+                        if (src_a_valid) begin
+                            mem_write_addr   <= res_addr;
+                            mem_write_val    <= src_a_latched;
+                            mem_write_enable <= 1;
+                            
+                            exec_done 	 <= 1;
+                        end
+                    end
+                    
+                    `BLOCK_INSTR_LOAD: begin
+                        case (exec_state)
+                            0: begin
+                                mem_read_addr <= res_addr;
+                                exec_state <= 1;
+                            end
+                            1: exec_state <= 2;
+                            2: begin
+                                mem_result_latched <= mem_read_val;
+                                write_mem_result <= 1;
+                                exec_done <= 1;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_LUT: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid) begin
+                                    lut_req		<= 1;
+                                    exec_state 	<= 1;
+                                end
+                            end
+                            1: exec_state <= 2;
+                            2: begin
+                                if (lut_ready) begin
+                                    lut_result_latched <= lut_data;
+                                    write_lut_result <= 1;
+                                    exec_done <= 1;
+                                    lut_req <= 0;
+                                end
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_DELAY_READ: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid) begin
+                                    delay_req_arg		<= src_a_latched;
+                                    delay_read_req		<= 1;
+                                    exec_state 			<= 1;
+                                end
+                            end
+                            1: exec_state <= 2;
+                            2: begin
+                                if (delay_read_ready) begin
+                                    delay_result_latched <= delay_req_data_in;
+                                    write_delay_result 	<= 1;
+                                    exec_done 		<= 1;
+                                    delay_read_req 	<= 0;
+                                end
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_DELAY_WRITE: begin
+                        case (exec_state)
+                            0: begin
+                                if (src_a_valid) begin
+                                    delay_req_arg		<= src_a_latched;
+                                    delay_write_req		<= 1;
+                                    exec_state 			<= 1;
+                                end
+                            end
+                            1: begin
+                                delay_write_req <= 0;
+                                exec_done		<= 1;
+                            end
+                        endcase
+                    end
+                    
+                    `BLOCK_INSTR_FRAC_DELAY: begin
+                        case (exec_state)
+                            0: begin
+                                delay_req_arg 	 <= accumulator[2*data_width-1] ? 0 : upper_accumulator;
+                                delay_read_req 	 <= 1;
+
+                                alu_a_latch_delay <= 1;
+                                alu_b_latch_delay <= 1;
+                                
+                                exec_state <= 1;
+                            end
+                            
+                            1: begin
+                                exec_state <= 2;
+                            end
+                            
+                            2: begin
+                                if (delay_read_ready) begin
+                                    alu_a_hold <= 1;
+                                    alu_a_latch_delay <= 0;
+
+                                    delay_req_arg 	<= delay_req_arg + 1;
+                                    delay_read_req 	<= 1;
+                                    exec_state 		<= 3;
+                                end
+                            end
+                            
+                            3: begin
+                                if (delay_read_ready) begin
+                                    alu_b_hold <= 1;
+                                    alu_b_latch_delay <= 0;
+
+                                    delay_read_req 	<= 0;
+                                    alu_c 			<= lower_accumulator;
+                                    alu_op 			<= `ALU_OP_LINTERP;
+                                    alu_trigger 	<= 1;
+                                    
+                                    exec_state <= 4;
+                                end
+                            end
+                            
+                            4: begin
+                                if (alu_result_valid) begin
+                                    alu_result_latched <= alu_result;
+                                    
+                                    alu_a_hold <= 0;
+                                    alu_b_hold <= 0;
+
+                                    write_alu_result <= 1;
+                                    
+                                    exec_done  <= 1;
+                                    exec_state <= 5;
+                                end
+                            end
+                        endcase
+                    end
+                endcase
+            end
+        end
+    end
 endmodule
 
