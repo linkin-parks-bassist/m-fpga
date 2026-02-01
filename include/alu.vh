@@ -1,0 +1,22 @@
+`define ALU_OP_ADD 			1
+`define ALU_OP_SUB 			2
+`define ALU_OP_LSH 			3
+`define ALU_OP_RSH 			4
+`define ALU_OP_ARSH 		5
+`define ALU_OP_ARSH_WIDE	9
+`define ALU_OP_MUL 			6
+`define ALU_OP_MADD			7
+`define ALU_OP_ABS			8
+`define ALU_OP_MIN			9
+`define ALU_OP_MAX			10
+`define ALU_OP_CLAMP		16
+`define ALU_OP_MAC			18
+`define ALU_OP_SAT			19
+`define ALU_OP_LINTERP		20
+
+`define ALU_STATE_SHIFT 	2
+`define ALU_STATE_SATURATE 	3
+`define ALU_STATE_ACC 		4
+`define ALU_STATE_INTERP	5
+`define ALU_STATE_DONE 		1
+`define ALU_STATE_IDLE 		0
