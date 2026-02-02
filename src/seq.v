@@ -4,6 +4,668 @@
 `include "seq.vh"
 `include "alu.vh"
 
+module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks = 256)
+	(
+		input wire clk,
+		input wire reset,
+	
+		input wire sample_tick,
+	
+		input wire [$clog2(n_blocks) - 1 : 0] last_block,
+		output reg [$clog2(n_blocks) - 1 : 0] instr_read_addr,
+		
+		input wire [31 : 0] instr_read_val,
+		
+		output reg out_valid,
+		input wire out_ready,
+		
+		output reg [4 : 0] operation_out,
+		
+		output reg [3 : 0] src_a_out,
+		output reg [3 : 0] src_b_out,
+		output reg [3 : 0] src_c_out,
+		output reg [3 : 0] dest_out,
+		
+		output reg src_a_reg_out,
+		output reg src_b_reg_out,
+		output reg src_c_reg_out,
+
+		output reg saturate_out,
+		output reg use_accumulator_out,
+		output reg subtract_out,
+		output reg signedness_out,
+		output reg dest_acc_out,
+
+		output reg [4 : 0] instr_shift_out,
+		output reg no_shift_out,
+		
+		output reg [7 : 0] res_addr_out,
+		
+		output reg src_a_needed_out,
+		output reg src_b_needed_out,
+		output reg src_c_needed_out
+	);
+	
+	reg [31 : 0] current_instr;
+	reg current_instr_valid;
+	reg instr_read_valid_next;
+	reg instr_read_valid;
+	
+	wire [4 : 0] operation;
+
+	wire [3 : 0] src_a;
+	wire [3 : 0] src_b;
+	wire [3 : 0] src_c;
+	wire [3 : 0] dest;
+
+	wire src_a_reg;
+	wire src_b_reg;
+	wire src_c_reg;
+
+	wire saturate;
+	wire use_accumulator;
+	wire subtract;
+	wire signedness;
+	wire dest_acc;
+
+	wire [4 : 0] instr_shift;
+	wire no_shift;
+
+	wire [7 : 0] res_addr;
+
+	wire src_a_needed;
+	wire src_b_needed;
+	wire src_c_needed;
+	
+	instr_decoder #(.data_width(data_width)) dec
+	(
+		.instr(current_instr),
+		
+		.operation(operation),
+		
+		.src_a(src_a),
+		.src_b(src_b),
+		.src_c(src_c),
+		.dest(dest),
+		
+		.src_a_reg(src_a_reg),
+		.src_b_reg(src_b_reg),
+		.src_c_reg(src_c_reg),
+
+		.saturate(saturate),
+		.use_accumulator(use_accumulator),
+		.subtract(subtract),
+		.signedness(signedness),
+		.dest_acc(dest_acc),
+
+		.instr_shift(instr_shift),
+		.no_shift(no_shift),
+		
+		.res_addr(res_addr),
+		
+		.src_a_needed(src_a_needed),
+		.src_b_needed(src_b_needed),
+		.src_c_needed(src_c_needed)
+	);
+	
+	// if the current output has been taken
+	wire out_consumed = out_valid && out_ready;
+	// if the current output can be replaced
+	wire out_free = out_consumed || !out_valid;
+	// if the current instruction can be replaced
+	wire current_free = !current_instr_valid || out_consumed;
+	
+	always @(posedge clk) begin
+		if (reset) begin
+			out_valid     <= 0;
+			instr_read_addr <= 0;
+			instr_read_valid  <= 0;
+			current_instr_valid <= 0;
+		end else begin
+			
+			// fragile to refactoring
+			if (!instr_read_valid && !instr_read_valid_next)
+				instr_read_valid_next <= 1;
+			else
+				instr_read_valid_next <= 0;
+			
+			if (instr_read_valid_next)
+				instr_read_valid <= 1;
+			
+			if (out_consumed)
+				out_valid <= 0;
+			
+			if (out_free && current_instr_valid) begin
+				operation_out <= operation;
+		
+				src_a_out <= src_a;
+				src_b_out <= src_b;
+				src_c_out <= src_c;
+				dest_out  <= dest;
+				
+				src_a_reg_out <= src_a_reg;
+				src_b_reg_out <= src_b_reg;
+				src_c_reg_out <= src_c_reg;
+
+				saturate_out 		<= saturate;
+				use_accumulator_out <= use_accumulator;
+				subtract_out 		<= subtract;
+				signedness_out 		<= signedness;
+				dest_acc_out 		<= dest_acc;
+
+				instr_shift_out <= instr_shift;
+				no_shift_out 	<= no_shift;
+				
+				res_addr_out <= res_addr;
+				
+				src_a_needed_out <= src_a_needed;
+				src_b_needed_out <= src_b_needed;
+				src_c_needed_out <= src_c_needed;
+				
+				out_valid <= 1;
+			end
+			
+			if (current_free && instr_read_valid) begin
+				current_instr <= instr_read_val;
+				current_instr_valid <= 1;
+				instr_read_valid <= 0;
+				instr_read_addr <= (instr_read_addr == last_block) ? 0 : instr_read_addr + 1;
+			end else if (out_valid && out_ready) begin
+				current_instr_valid <= 0;
+			end
+		end
+	end
+endmodule
+
+module multiply_stage #(parameter data_width = 16)
+	(
+		input wire clk,
+		input wire reset,
+		
+		input  wire in_valid,
+		output wire in_ready,
+		
+		input wire [7 : 0] operation_in,
+		
+		input wire [4:0] shift_in,
+		input wire no_shift_in,
+		input wire saturate_in,
+		input wire signedness_in,
+		input wire use_accumulator_in,
+		input wire subtract_in,
+		
+		input wire signed [data_width - 1 : 0] arg_a_in,
+		input wire signed [data_width - 1 : 0] arg_b_in,
+		input wire signed [data_width - 1 : 0] arg_c_in,
+		
+		input wire signed [2 * data_width - 1 : 0] accumulator_in,
+		
+		input wire [3:0] dest_in,
+		input wire dest_acc_in,
+		
+		output reg [7 : 0] operation_out,
+		
+		output reg [4:0] shift_out,
+		output reg no_shift_out,
+		output reg saturate_out,
+		output reg signedness_out,
+		output reg use_accumulator_out,
+		output reg subtract_out,
+		
+		output reg signed [data_width - 1 : 0] arg_a_out,
+		output reg signed [data_width - 1 : 0] arg_b_out,
+		output reg signed [data_width - 1 : 0] arg_c_out,
+		
+		output reg signed [2 * data_width - 1 : 0] product_out,
+		
+		output reg signed [2 * data_width - 1 : 0] accumulator_out,
+		
+		output reg [3:0] dest_out,
+		output reg dest_acc_out,
+		
+		output reg out_valid,
+		input wire out_ready,
+		
+		input wire [8:0] commit_id_in,
+		output reg [8:0] commit_id_out
+	);
+	
+	assign in_ready = ~out_valid | out_ready;
+	
+	wire take_in  = in_ready & in_valid;
+	wire take_out = out_valid & out_ready;
+
+	always @(posedge clk) begin
+		if (reset) begin
+			out_valid 	<= 0;
+		end else begin
+			if (take_in) begin
+				out_valid <= 1;
+				
+				operation_out 		<= operation_in;
+				shift_out 			<= shift_in;
+				no_shift_out 		<= no_shift_in;
+				saturate_out 		<= saturate_in;
+				signedness_out 		<= signedness_in;
+				use_accumulator_out <= use_accumulator_in;
+				subtract_out		<= subtract_in;
+				
+				product_out 		<= arg_a_in * arg_b_in;
+				arg_a_out 			<= arg_a_in;
+				arg_b_out 			<= arg_b_in;
+				arg_c_out 			<= arg_c_in;
+				
+				accumulator_out 	<= accumulator_in;
+				dest_out 			<= dest_in;
+				dest_acc_out 		<= dest_acc_in;
+				
+				commit_id_out		<= commit_id_in;
+			end else if (take_out) begin
+				out_valid <= 0;
+			end
+		end
+	end
+endmodule
+
+
+module shift_stage #(parameter data_width = 16)
+	(
+		input wire clk,
+		input wire reset,
+		
+		input  wire in_valid,
+		output wire in_ready,
+		
+		input wire [7 : 0] operation_in,
+		
+		input wire [4:0] shift_in,
+		input wire no_shift_in,
+		input wire saturate_in,
+		input wire signedness_in,
+		input wire use_accumulator_in,
+		input wire subtract_in,
+		
+		input wire signed [2 * data_width - 1 : 0] product_in,
+		
+		input wire signed [data_width - 1 : 0] arg_a_in,
+		input wire signed [data_width - 1 : 0] arg_b_in,
+		input wire signed [data_width - 1 : 0] arg_c_in,
+		
+		input wire signed [2 * data_width - 1 : 0] accumulator_in,
+		
+		input wire [3:0] dest_in,
+		input wire dest_acc_in,
+		
+		output reg [7 : 0] operation_out,
+		
+		output reg saturate_out,
+		output reg signedness_out,
+		output reg use_accumulator_out,
+		output reg subtract_out,
+		
+		output reg signed [data_width - 1 : 0] arg_a_out,
+		output reg signed [data_width - 1 : 0] arg_b_out,
+		output reg signed [data_width - 1 : 0] arg_c_out,
+		
+		output reg signed [2 * data_width - 1 : 0] product_out,
+		output reg signed [2 * data_width - 1 : 0] accumulator_out,
+		
+		output reg [3:0] dest_out,
+		output reg dest_acc_out,
+		
+		output reg out_valid,
+		input wire out_ready,
+		
+		input wire [8:0] commit_id_in,
+		output reg [8:0] commit_id_out
+	);
+	
+	assign in_ready = ~out_valid | out_ready;
+	
+	wire take_in  = in_ready & in_valid;
+	wire take_out = out_valid & out_ready;
+	
+	wire shift_arg_a = (operation_in == `BLOCK_INSTR_LSH
+					 || operation_in == `BLOCK_INSTR_RSH
+					 || operation_in == `BLOCK_INSTR_ARSH);
+	
+	wire [1:0] arg_a_shift_type =
+		(operation_in == `BLOCK_INSTR_ARSH) ? 2'b11 :
+			((operation_in == `BLOCK_INSTR_RSH) ? 2'b10 :
+				((operation_in == `BLOCK_INSTR_LSH) ? 2'b01
+					: 2'b00));
+	
+	wire [data_width - 1 : 0] arg_a_shifts [3:0];
+	
+	assign arg_a_shifts[2'b00] = arg_a_in;
+	assign arg_a_shifts[2'b01] = arg_a_in  << shift;
+	assign arg_a_shifts[2'b10] = arg_a_in  >> shift;
+	assign arg_a_shifts[2'b11] = arg_a_in >>> shift;
+	
+	wire [data_width - 1 : 0] arg_a_shift = arg_a_shifts[arg_a_shift_type];
+
+	always @(posedge clk) begin
+		if (reset) begin
+			out_valid 	<= 0;
+		end else begin
+			if (take_in) begin
+				out_valid <= 1;
+				
+				operation_out 		<= operation_in;
+				saturate_out 		<= saturate_in;
+				signedness_out 		<= signedness_in;
+				use_accumulator_out <= use_accumulator_in;
+				subtract_out		<= subtract_in;
+				
+				product_out 		<= (no_shift_in) ? product_in : product_in >>> shift_in;
+				arg_a_out 			<= arg_a_shift;
+				arg_b_out 			<= arg_b_in;
+				arg_c_out 			<= arg_c_in;
+				
+				accumulator_out 	<= accumulator_in;
+				dest_out 			<= dest_in;
+				dest_acc_out 		<= dest_acc_in;
+				
+				commit_id_out		<= commit_id_in;
+			end else if (take_out) begin
+				out_valid <= 0;
+			end
+		end
+	end
+endmodule
+
+module arithmetic_stage #(parameter data_width = 16)
+	(
+		input wire clk,
+		input wire reset,
+		
+		input  wire in_valid,
+		output wire in_ready,
+		
+		input wire [7 : 0] operation_in,
+		
+		input wire saturate_in,
+		input wire signedness_in,
+		input wire use_accumulator_in,
+		input wire subtract_in,
+		
+		input wire signed [2 * data_width - 1 : 0] product_in,
+		
+		input wire signed [data_width - 1 : 0] arg_a_in,
+		input wire signed [data_width - 1 : 0] arg_b_in,
+		input wire signed [data_width - 1 : 0] arg_c_in,
+		
+		input wire signed [2 * data_width - 1 : 0] accumulator_in,
+		
+		input wire [3:0] dest_in,
+		input wire dest_acc_in,
+		
+		output reg saturate_out,
+		
+		output reg signed [2 * data_width - 1 : 0] result_out,
+		
+		output reg [3:0] dest_out,
+		output reg dest_acc_out,
+		
+		output reg out_valid,
+		input wire out_ready,
+		
+		input wire [8:0] commit_id_in,
+		output reg [8:0] commit_id_out
+	);
+	
+	assign in_ready = ~out_valid | out_ready;
+	
+	wire take_in  =  in_ready & in_valid;
+	wire take_out = out_valid & out_ready;
+	
+	wire signed [2 * data_width - 1 : 0] arg_a_ext = {{(data_width){signedness_in & arg_a_in[data_width-1]}}, arg_a_in};
+	wire signed [2 * data_width - 1 : 0] arg_b_ext = {{(data_width){signedness_in & arg_b_in[data_width-1]}}, arg_b_in};
+	wire signed [2 * data_width - 1 : 0] arg_c_ext = {{(data_width){signedness_in & arg_c_in[data_width-1]}}, arg_c_in};
+	
+	wire signed [2 * data_width - 1 : 0] r_summand = use_accumulator_in ? accumulator_in : arg_c_ext;
+	
+	wire signed [2 * data_width - 1 : 0] sum = product_in + (subtract_in) ? -r_summand : r_summand;
+	
+	wire signed [2 * data_width - 1 : 0] clamp = (arg_a_e < arg_b_in) ? arg_b_ext : ((arg_a_in > arg_c_in) ? arg_c_ext : arg_a_ext);
+	wire signed [2 * data_width - 1 : 0] abs   = (arg_a_in < 0) ? -arg_a_ext : arg_a_ext;
+	
+	wire signed [2 * data_width - 1 : 0] result = (operation_in == `BLOCK_INSTR_ABS) ? abs : ((operation_in == `BLOCK_INSTR_CLAMP) ? clamp : sum);
+
+	always @(posedge clk) begin
+		if (reset) begin
+			out_valid 	<= 0;
+		end else begin
+			if (take_in) begin
+				out_valid <= 1;
+				
+				saturate_out 		<= saturate_in;
+				use_accumulator_out <= use_accumulator_in;
+				
+				result_out			<= result;
+				
+				dest_out 			<= dest_in;
+				dest_acc_out 		<= dest_acc_in;
+				
+				commit_id_out		<= commit_id_in;
+			end else if (take_out) begin
+				out_valid <= 0;
+			end
+		end
+	end
+endmodule
+
+module saturate_stage #(parameter data_width = 16)
+	(
+		input wire clk,
+		input wire reset,
+		
+		input  wire in_valid,
+		output wire in_ready,
+		
+		input wire saturate_in,
+		
+		input wire [3:0] dest_in,
+		input wire dest_acc_in,
+		
+		input wire signed [2 * data_width - 1 : 0] result_in,
+		output reg signed [2 * data_width - 1 : 0] result_out,
+		
+		output reg [3:0] dest_out,
+		output reg dest_acc_out,
+		
+		output reg out_valid,
+		input wire out_ready,
+		
+		input wire [8:0] commit_id_in,
+		output reg [8:0] commit_id_out
+	);
+	
+	assign in_ready = ~out_valid | out_ready;
+	
+	wire take_in  =  in_ready & in_valid;
+	wire take_out = out_valid & out_ready;
+	
+	localparam signed sat_max = {{(data_width + 1){1'b0}}, {(data_width - 1){1'b1}}};
+	localparam signed sat_min = {{(data_width + 1){1'b1}}, {(data_width - 1){1'b0}}};
+	
+	wire signed [2 * data_width - 1 : 0] result_in_sat = (result_in > sat_max) ? sat_max : ((result_in < sat_min) ? sat_min : result_in);
+
+	always @(posedge clk) begin
+		if (reset) begin
+			out_valid 		<= 0;
+		end else begin
+			if (take_in) begin
+				out_valid <= 1;
+				
+				result_out <= (saturate_in) ? result_in_sat : result_in;
+				
+				dest_out     <= dest_in;
+				dest_acc_out <= dest_acc_in;
+				
+				commit_id_out <= commit_id_in;
+			end else if (take_out) begin
+				out_valid <= 0;
+			end
+		end
+	end
+endmodule
+
+module resource_branch #(parameter data_width = 16, parameter handle_width = 8)
+	(
+		input wire clk,
+		input wire reset,
+		
+		input  wire in_valid,
+		output wire in_ready,
+		
+		output reg out_valid,
+		input wire out_ready,
+		
+		input wire write,
+		
+		input wire [handle_width - 1 : 0] handle_in,
+		input wire [data_width   - 1 : 0] arg_a_in,
+		input wire [data_width   - 1 : 0] arg_b_in,
+		
+		output wire read_req,
+		output wire write_req,
+		
+		output reg 		[handle_width - 1 : 0] handle_out,
+		output reg signed [data_width - 1 : 0] arg_a_out,
+		output reg signed [data_width - 1 : 0] arg_b_out,
+		input wire signed [data_width - 1 : 0] data_in,
+		
+		input wire read_ready,
+		input wire write_ack,
+		
+		output reg signed [data_width - 1 : 0] data_out,
+		
+		input wire [8:0] commit_id_in,
+		output reg [8:0] commit_id_out
+	);
+	
+	localparam IDLE = 2'd0;
+	localparam REQ  = 2'd1;
+	localparam DONE = 2'd2;
+	
+	assign in_ready = (state == IDLE);
+	
+	assign read_req  = (state == REQ) & ~write_latched;
+	assign write_req = (state == REQ) &  write_latched;
+	
+	assign out_valid = (state == DONE);
+	
+	reg write_latched;
+	reg [1:0] state;
+	
+	always @(posedge clk) begin
+		if (reset) begin
+			state   <= 0;
+			out_valid <= 0;
+			commits_out <= 0;
+			commit_id_out <= 0;
+		end else begin
+			case (state)
+				IDLE: begin
+					if (in_valid && in_ready) begin
+						handle_out <= handle_in;
+						
+						arg_a_out <= arg_a_in;
+						arg_b_out <= arg_b_in;
+						
+						commit_id_out <= commit_id_in;
+						
+						write_latched <= write;
+						
+						state <= 1;
+					end
+				end
+				
+				REQ: begin
+					if (write_latched && write_ack) begin
+						state <= 0;
+					end else if (!write_latched && read_ready) begin
+						data_out <= data_in;
+						out_valid <= 1;
+						state <= 2;
+					end
+				end
+				
+				DONE: begin
+					if (out_ready) begin
+						state <= 0;
+					end
+				end
+			endcase
+		end
+	end
+endmodule
+
+module commit_master #(parameter data_width = 16,
+					   parameter n_branches = 2)
+	(
+		input wire clk,
+		input wire reset,
+		
+		input wire sample_tick,
+		
+		input wire 						 out_valid [n_branches - 1 : 0],
+		input wire [2 * data_width - 1 : 0] result [n_branches - 1 : 0],
+		input wire [3 : 0] 					  dest [n_branches - 1 : 0],
+		input wire 		 				  dest_acc [n_branches - 1 : 0],
+		input wire 						   commits [n_branches - 1 : 0],
+		input wire [8 : 0]				 commit_id [n_branches - 1 : 0],
+		output reg 						  in_ready [n_branches - 1 : 0],
+		
+		output reg [3 : 0] 				channel_write_addr,
+		output reg [data_width - 1 : 0] channel_write_val,
+		output reg 						channel_write_enable,
+		
+		output reg [2 * data_width - 1 : 0] acc_write_val,
+		output reg acc_write_enable
+	);
+	
+	reg [8:0] next_commit_id;
+	
+	bit found;
+	
+	integer i;
+	always @(posedge clk) begin	
+		
+		in_ready <= 0;
+		
+		acc_write_enable <= 0;
+		channel_write_enable <= 0;
+		
+		found = 0;
+		
+		if (reset) begin
+			next_commit_id <= 0;
+		end else if (sample_tick) begin
+			next_commit_id <= 0;
+		end else begin
+			for (i = 0; i < n_branches && !found; i = i + 1) begin
+				if (out_valid[i] && commit_id[i] == next_commit_id) begin
+					if (dest_acc[i]) begin
+						acc_write_val <= result[i];
+						acc_write_enable <= 1;
+					end else begin
+						channel_write_addr <= dest[i];
+						channel_write_val  <= result[i][data_width - 1 : 0];
+						channel_write_enable <= 1;
+					end
+					
+					next_commit_id <= next_commit_id + 1;
+					in_ready[i] <= 1;
+					
+					found = 1;
+				end
+			end
+		end
+	end
+endmodule
+
 module dsp_core_2 #(
 		parameter integer data_width 	= 16,
 		parameter integer n_blocks		= 256,
@@ -25,10 +687,10 @@ module dsp_core_2 #(
 		input wire command_reg_write,
 		input wire command_instr_write,
 		
-		input wire [$clog2(n_blocks)  	 - 1  : 0] command_block_target,
-		input wire [$clog2(n_block_regs) - 1  : 0] command_reg_target,
-		input wire [31					  	  : 0] command_instr_write_val,
-		input wire signed [data_width 	  - 1 : 0] command_reg_write_val,
+		input wire [$clog2(n_blocks)  	 - 1 : 0] command_block_target,
+		input wire [$clog2(n_block_regs) - 1 : 0] command_reg_target,
+		input wire [31					     : 0] command_instr_write_val,
+		input wire signed [data_width 	 - 1 : 0] command_reg_write_val,
 		
 		output reg lut_req,
 		output reg signed [data_width - 1 : 0] lut_handle,

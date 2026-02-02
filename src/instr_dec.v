@@ -19,6 +19,10 @@ module instr_decoder #(parameter data_width = 16)
 		output logic src_c_reg,
 
 		output logic saturate,
+		output logic use_accumulator,
+		output logic subtract,
+		output logic signedness,
+		output logic dest_acc,
 
 		output logic [4 : 0] instr_shift,
 		output logic no_shift,
@@ -66,11 +70,17 @@ module instr_decoder #(parameter data_width = 16)
 		operation == `BLOCK_INSTR_MAC 	||
 		operation == `BLOCK_INSTR_LINTERP);
 	
-	always @(posedge clk) begin
-		{src_c_reg, src_c} <= (instr_format) ? 		5'b0  : instr[20:16];
-		dest 			  <= (instr_format) ? instr[19:16] : instr[24:21];
-		instr_shift		  <= (instr_format) ? 		5'b0  : instr[29:25];
-		saturate			  <= (instr_format) ? 		   1  : ~instr[30];
-		res_addr			  <= (instr_format) ? instr[27:20] : 8'b0;
-	end
+	assign {src_c_reg, src_c} = (instr_format) ? 		5'b0  :  instr[20:16];
+	assign dest 			  = (instr_format) ? instr[19:16] :  instr[24:21];
+	assign instr_shift		  = (instr_format) ? 		5'b0  :  instr[29:25];
+	assign saturate		      = (instr_format) ? 		   1  : ~instr[30];
+	assign res_addr		      = (instr_format) ? instr[27:20] :  8'b0;
+	
+	assign use_accumulator = (
+		operation == `BLOCK_INSTR_MACZ 	  ||
+		operation == `BLOCK_INSTR_MAC 	  ||
+		operation == `BLOCK_INSTR_MOV_ACC ||);
+	assign subtract			= (operation == `BLOCK_INSTR_SUB);
+	assign signedness 		= 1;
+	assign dest_acc 		= (operation == `BLOCK_INSTR_MACZ || operation == `BLOCK_INSTR_MAC);
 endmodule

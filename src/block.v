@@ -723,3 +723,142 @@ module pipeline_block
 		end
 	end
 endmodule
+
+module pipeline_block_2
+	#(
+		parameter integer data_width = 16,
+		parameter integer n_channels = 16
+	)
+	(
+		input wire clk,
+		
+		input wire tick,
+		input wire reset,
+		
+		input  wire [data_width - 1 : 0] channels_in  [n_channels - 1 : 0],
+        output wire [data_width - 1 : 0] channels_out [n_channels - 1 : 0],
+
+		input wire [`BLOCK_INSTR_WIDTH - 1 : 0] instr_val,
+		input wire instr_write,
+		
+		input wire [data_width - 1 		: 0] reg_val,
+		input wire reg_target,
+		input wire reg_write,
+		
+		output reg [7:0] alu_op,
+		output reg alu_req,
+		
+		output reg [data_width - 1 : 0] alu_a,
+		output reg [data_width - 1 : 0] alu_b,
+		
+		input wire signed [2 * data_width - 1 : 0] alu_result,
+		input wire alu_done,
+		
+		output reg done,
+		
+		output reg lut_req,
+		output reg signed [`LUT_HANDLE_WIDTH - 1 : 0] lut_handle,
+		output reg signed [data_width - 1 : 0] lut_arg,
+		input wire signed [data_width - 1 : 0] lut_data,
+		input wire lut_ready,
+		
+		output reg delay_read_req,
+		output reg delay_write_req,
+		output reg signed [data_width - 1 : 0] delay_buf_handle,
+		output reg signed [data_width - 1 : 0] delay_buf_data_out,
+		input wire signed [data_width - 1 : 0] delay_buf_data_in,
+		input wire delay_buf_read_ready,
+		input wire delay_buf_write_ready,
+		input wire delay_buf_invalid_read,
+		input wire delay_buf_invalid_write
+	);
+	
+	reg [31:0] instr;
+	
+	reg [data_width - 1 : 0] regs [1:0];
+	
+	reg latch_instr;
+	reg latch_instr_next;
+	reg latch_instr_now;
+	
+	reg [31 : 0] next_instr;
+	
+	reg latch_next_instr;
+	reg latch_next_instr_next;
+	reg latch_next_instr_now;
+		
+	wire [4 : 0] operation;
+	
+	wire [3 : 0] src_a;
+	wire [3 : 0] src_b;
+	wire [3 : 0] src_c;
+	wire [3 : 0] dest;
+	
+	wire src_a_reg;
+	wire src_b_reg;
+	wire src_c_reg;
+
+	wire saturate;
+
+	wire [4 : 0] instr_shift;
+	wire no_shift;
+	
+	wire [7 : 0] res_addr;
+	
+	instr_decoder #(.data_width(data_width)) dec(
+		.clk(clk),
+		
+		.instr(instr),
+		
+		.operation(operation),
+		
+		.src_a(src_a),
+		.src_b(src_b),
+		.src_c(src_c),
+		.dest(dest),
+		
+		.src_a_reg(src_a_reg),
+		.src_b_reg(src_b_reg),
+		.src_c_reg(src_c_reg),
+		
+		.src_a_needed(src_a_needed),
+		.src_b_needed(src_b_needed),
+		.src_c_needed(src_c_needed),
+
+		.saturate(saturate),
+
+		.instr_shift(instr_shift),
+		
+		.res_addr(res_addr),
+		
+		.no_shift(no_shift)
+	);
+	
+	reg src_a_latched;
+	reg src_b_latched;
+	reg src_c_latched;
+	
+	always @(posedge clk) begin
+		src_a_latched <= src_a_reg ? regs[src_a[0]] : channels_in[src_a];
+		src_b_latched <= src_b_reg ? regs[src_b[0]] : channels_in[src_b];
+		src_c_latched <= src_c_reg ? regs[src_c[0]] : channels_in[src_c];
+		
+		alu_a <= src_a_latched;
+		alu_b <= src_b_latched;
+		
+		alu_op <=
+	end
+	
+	reg [7:0] state;
+	
+	always @(posedge clk) begin
+		if (reset) begin
+		
+		end else begin
+			if (tick) begin
+				
+			end
+		end
+	end
+	
+endmodule
