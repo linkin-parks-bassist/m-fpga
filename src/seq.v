@@ -4,7 +4,7 @@
 `include "seq.vh"
 `include "alu.vh"
 
-module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks = 256)
+module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter n_block_regs = 2)
 	(
 		input wire clk,
 		input wire reset,
@@ -18,6 +18,8 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		
 		output reg out_valid,
 		input wire out_ready,
+		
+		output reg [$clog2(n_blocks) - 1 : 0] block,
 		
 		output reg [4 : 0] operation_out,
 		
@@ -41,12 +43,16 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		
 		output reg [7 : 0] res_addr_out,
 		
-		output reg src_a_needed_out,
-		output reg src_b_needed_out,
-		output reg src_c_needed_out
+		output reg arg_a_needed_out,
+		output reg arg_b_needed_out,
+		output reg arg_c_needed_out,
+		
+		output reg [`N_INSTR_BRANCHES - 1 : 0] branch_out,
+		output reg commits_out
 	);
 	
 	reg [31 : 0] current_instr;
+	reg [$clog2(n_blocks) - 1 : 0] current_block;
 	reg current_instr_valid;
 	reg instr_read_valid_next;
 	reg instr_read_valid;
@@ -73,9 +79,12 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 
 	wire [7 : 0] res_addr;
 
-	wire src_a_needed;
-	wire src_b_needed;
-	wire src_c_needed;
+	wire arg_a_needed;
+	wire arg_b_needed;
+	wire arg_c_needed;
+	
+	wire [`N_INSTR_BRANCHES - 1 : 0] branch;
+	wire commits;
 	
 	instr_decoder #(.data_width(data_width)) dec
 	(
@@ -103,9 +112,12 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		
 		.res_addr(res_addr),
 		
-		.src_a_needed(src_a_needed),
-		.src_b_needed(src_b_needed),
-		.src_c_needed(src_c_needed)
+		.src_a_needed(arc_a_needed),
+		.src_b_needed(arc_b_needed),
+		.src_c_needed(arc_c_needed),
+		
+		.branch(branch),
+		.commits(commits)
 	);
 	
 	// if the current output has been taken
@@ -117,10 +129,12 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 	
 	always @(posedge clk) begin
 		if (reset) begin
-			out_valid     <= 0;
+			out_valid   <= 0;
+			current_block <= 0;
 			instr_read_addr <= 0;
 			instr_read_valid  <= 0;
 			current_instr_valid <= 0;
+			instr_read_valid_next <= 0;
 		end else begin
 			
 			// fragile to refactoring
@@ -136,6 +150,8 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 				out_valid <= 0;
 			
 			if (out_free && current_instr_valid) begin
+				block <= current_block;
+			
 				operation_out <= operation;
 		
 				src_a_out <= src_a;
@@ -158,15 +174,19 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 				
 				res_addr_out <= res_addr;
 				
-				src_a_needed_out <= src_a_needed;
-				src_b_needed_out <= src_b_needed;
-				src_c_needed_out <= src_c_needed;
+				arg_a_needed_out <= arg_a_needed;
+				arg_b_needed_out <= arg_b_needed;
+				arg_c_needed_out <= arg_c_needed;
+				
+				branch_out  <= branch;
+				commits_out <= commits;
 				
 				out_valid <= 1;
 			end
 			
 			if (current_free && instr_read_valid) begin
 				current_instr <= instr_read_val;
+				current_block <= instr_read_addr;
 				current_instr_valid <= 1;
 				instr_read_valid <= 0;
 				instr_read_addr <= (instr_read_addr == last_block) ? 0 : instr_read_addr + 1;
@@ -176,6 +196,399 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		end
 	end
 endmodule
+
+module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256)
+	(
+		input wire clk,
+		input wire reset,
+	
+		input wire sample_tick,
+	
+		input wire [$clog2(n_blocks) - 1 : 0] last_block,
+		output reg [$clog2(n_blocks) - 1 : 0] instr_read_addr,
+		
+		input wire [31 : 0] instr_read_val,
+		
+		input wire in_valid,
+		output reg in_ready,
+		
+		input wire [$clog2(n_blocks) : 0] block,
+		
+		input wire [4 : 0] operation_in,
+		
+		input wire [3 : 0] dest_in,
+		input wire dest_acc_in,
+
+		input wire signed [data_width - 1 : 0] src_a_in,
+		input wire signed [data_width - 1 : 0] src_b_in,
+		input wire signed [data_width - 1 : 0] src_c_in,
+
+		input wire src_a_reg_in,
+		input wire src_b_reg_in,
+		input wire src_c_reg_in,
+		
+		input wire saturate_in,
+		input wire use_accumulator_in,
+		input wire subtract_in,
+		input wire signedness_in,
+
+		input wire [4 : 0] instr_shift_in,
+		input wire no_shift_in,
+		
+		input wire [7 : 0] res_addr_in,
+		
+		input wire arg_a_needed_in,
+		input wire arg_b_needed_in,
+		input wire arg_c_needed_in,
+		
+		input wire [`N_INSTR_BRANCHES - 1 : 0] branch,
+		input wire commits,
+		
+		output reg [4 : 0] operation_out,
+		
+		output reg [3 : 0] dest_out,
+		output reg dest_acc_out,
+
+		output reg signed [data_width - 1 : 0] arg_a_out,
+		output reg signed [data_width - 1 : 0] arg_b_out,
+		output reg signed [data_width - 1 : 0] arg_c_out,
+
+		output reg saturate_out,
+		output reg use_accumulator_out,
+		output reg subtract_out,
+		output reg signedness_out,
+
+		output reg [4 : 0] instr_shift_out,
+		output reg no_shift_out,
+		
+		output reg [7 : 0] res_addr_out,
+		
+		input wire signed [2 * data_width - 1 : 0] accumulator_in,
+		output reg signed [2 * data_width - 1 : 0] accumulator_out,
+		
+		input wire [3 : 0] channel_write_addr,
+		input wire signed [data_width - 1 : 0] channel_write_val,
+		input wire channel_write_enable,
+		
+		output reg [3 : 0] channel_read_addr,
+		input wire signed [data_width - 1 : 0] channel_read_val,
+		
+		output reg [$clog2(n_blocks) + $clog2(n_block_regs) - 1 : 0] reg_read_addr,
+		input wire signed [data_width - 1 : 0] reg_read_val,
+		
+		input wire [2 * data_width - 1 : 0] acc_write_val,
+		input wire acc_write_enable,
+		
+		output reg out_valid [`N_INSTR_BRANCHES - 1 : 0],
+		input wire out_ready [`N_INSTR_BRANCHES - 1 : 0]
+	);
+	
+	reg   [3 : 0] channels_scoreboard [15 : 0];
+	reg   [3 : 0] acc_pending_writes;
+	
+	wire accumulator_stall = (use_accumulator_latched && acc_pending_writes != 0);
+	
+	reg add_pending_write;
+
+	integer i;
+	always @(posedge clk) begin
+		if (reset) begin
+			for (i = 0; i < 16; i = i + 1)
+				channels_scoreboard[i] <= 0;
+			
+			acc_pending_writes <= 0;
+		end else begin
+			for (i = 0; i < 16; i = i + 1) begin
+				case ({add_pending_write && dest_latched == i && !dest_acc_latched,
+						channel_write_enable && channel_write_addr == i})
+					2'b10: begin
+						channels_scoreboard[i] <= channels_scoreboard[i] + 1;
+					end
+					
+					2'b01: begin
+						if (channels_scoreboard[i] != 0)
+							channels_scoreboard[i] <= channels_scoreboard[i] - 1;
+					end
+					
+					default: begin
+						channels_scoreboard[i] <= channels_scoreboard[i];
+					end
+				endcase
+			end
+			
+			case ({add_pending_write & dest_acc_latched, acc_write_enable})
+				2'b10: begin
+					acc_pending_writes <= acc_pending_writes + 1;
+				end
+				
+				2'b01: begin
+					if (acc_pending_writes != 0)
+						acc_pending_writes <= acc_pending_writes - 1;
+				end
+				
+				default: begin
+					acc_pending_writes <= acc_pending_writes;
+				end
+			endcase
+		end
+	end
+	
+	reg [$clog2(n_blocks) - 1 : 0] block_latched;
+	
+	reg [4 : 0] operation_latched;
+	
+	reg [3 : 0] dest_latched;
+	reg dest_acc_latched;
+
+	reg signed [data_width - 1 : 0] src_a_latched;
+	reg signed [data_width - 1 : 0] src_b_latched;
+	reg signed [data_width - 1 : 0] src_c_latched;
+	
+	reg src_a_reg_latched;
+	reg src_b_reg_latched;
+	reg src_c_reg_latched;
+	
+	reg arg_a_needed_latched;
+	reg arg_b_needed_latched;
+	reg arg_c_needed_latched;
+
+	reg saturate_latched;
+	reg use_accumulator_latched;
+	reg subtract_latched;
+	reg signedness_latched;
+
+	reg [4 : 0] instr_shift_latched;
+	reg no_shift_latched;
+	
+	reg [7 : 0] res_addr_latched;
+	
+	reg [`N_INSTR_BRANCHES - 1 : 0] branch_latched;
+	reg commits_latched;
+	
+	wire arg_a_resolved = ~arg_a_needed_latched | arg_a_valid;
+	wire arg_b_resolved = ~arg_b_needed_latched | arg_b_valid;
+	wire arg_c_resolved = ~arg_c_needed_latched | arg_c_valid;
+	
+	wire  [3 : 0] current_arg = arg_a_resolved ? (arg_b_resolved ? (src_c_latched) : src_b_latched) : src_a_latched;
+	
+	wire  [3 : 0] arg_pending_writes = channels_scoreboard[current_arg];
+	
+	reg 		arg_a_read_issued;
+	reg [2 : 0] arg_a_read_shift_register;
+	
+	reg signed [data_width - 1 : 0] arg_a_latched;
+	reg arg_a_valid;
+	
+	reg 		arg_b_read_issued;
+	reg [2 : 0] arg_b_read_shift_register;
+	
+	reg signed [data_width - 1 : 0] arg_b_latched;
+	reg arg_b_valid;
+	
+	reg 		arg_c_read_issued;
+	reg [2 : 0] arg_c_read_shift_register;
+	
+	reg signed [data_width - 1 : 0] arg_c_latched;
+	reg arg_c_valid;
+	
+	always @(posedge clk) begin
+		if (reset) begin
+			arg_a_read_issued 		  <= 0;
+			arg_a_read_shift_register <= 0;
+			arg_a_valid 			  <= 0;
+		end else if (state == BUSY) begin
+			if (!arg_a_needed_latched) arg_a_valid <= 1;
+			if (!arg_b_needed_latched) arg_b_valid <= 1;
+			if (!arg_c_needed_latched) arg_c_valid <= 1;
+			
+			arg_a_read_shift_register <= arg_a_read_shift_register >> 1;
+			
+			if (!arg_a_resolved) begin
+				if (arg_a_read_issued) begin
+					if (arg_a_read_shift_register[1]) begin
+						arg_a_latched 				<= src_a_reg_latched ? reg_read_val : channel_read_val;
+						arg_a_valid 				<= 1;
+						arg_a_read_issued 			<= 0;
+						arg_a_read_shift_register 	<= 0;
+					end
+				end else begin
+					if (src_a_reg_latched) begin
+						reg_read_addr <= {block_latched, src_a_latched[$clog2(n_block_regs) - 1 : 0]};
+						arg_a_read_issued <= 1;
+						arg_a_read_shift_register <= 3'b100;
+					end else begin
+						if (arg_pending_writes == 0) begin
+							channel_read_addr <= src_a_latched;
+							arg_a_read_issued <= 1;
+							arg_a_read_shift_register <= 3'b100;
+						end else if (arg_pending_writes == 1) begin
+							if (channel_write_enable && channel_write_addr == src_a_latched) begin
+								arg_a_latched <= channel_read_val;
+								arg_a_valid <= 1;
+							end
+						end
+					end
+				end
+			end else if (!arg_b_resolved) begin
+				if (arg_b_read_issued) begin
+					if (arg_b_read_shift_register[1]) begin
+						arg_b_latched 				<= src_b_reg_latched ? reg_read_val : channel_read_val;
+						arg_b_valid 				<= 1;
+						arg_b_read_issued 			<= 0;
+						arg_b_read_shift_register 	<= 0;
+					end
+				end else begin
+					if (src_b_reg_latched) begin
+						reg_read_addr <= {block_latched, src_b_latched[$clog2(n_block_regs) - 1 : 0]};
+						arg_b_read_issued <= 1;
+						arg_b_read_shift_register <= 3'b100;
+					end else begin
+						if (arg_pending_writes == 0) begin
+							channel_read_addr <= src_b_latched;
+							arg_b_read_issued <= 1;
+							arg_b_read_shift_register <= 3'b100;
+						end else if (arg_pending_writes == 1) begin
+							if (channel_write_enable && channel_write_addr == src_b_latched) begin
+								arg_b_latched <= channel_read_val;
+								arg_b_valid <= 1;
+							end
+						end
+					end
+				end
+			end else if (!arg_c_resolved) begin
+				if (arg_c_read_issued) begin
+					if (arg_c_read_shift_register[1]) begin
+						arg_c_latched 				<= src_c_reg_latched ? reg_read_val : channel_read_val;
+						arg_c_valid 				<= 1;
+						arg_c_read_issued 			<= 0;
+						arg_c_read_shift_register 	<= 0;
+					end
+				end else begin
+					if (src_c_reg_latched) begin
+						reg_read_addr <= {block_latched, src_c_latched[$clog2(n_block_regs) - 1 : 0]};
+						arg_c_read_issued <= 1;
+						arg_c_read_shift_register <= 3'b100;
+					end else begin
+						if (arg_pending_writes == 0) begin
+							channel_read_addr <= src_c_latched;
+							arg_c_read_issued <= 1;
+							arg_c_read_shift_register <= 3'b100;
+						end else if (arg_pending_writes == 1) begin
+							if (channel_write_enable && channel_write_addr == src_c_latched) begin
+								arg_c_latched <= channel_read_val;
+								arg_c_valid <= 1;
+							end
+						end
+					end
+				end
+			end
+		end else begin
+			arg_a_valid <= 0;
+			arg_b_valid <= 0;
+			arg_c_valid <= 0;
+		end
+	end
+	
+	localparam IDLE = 2'd0;
+	localparam BUSY = 2'd1;
+	localparam DONE = 2'd2;
+	
+	assign in_ready = (state == IDLE);
+	
+	reg [1:0] state;
+	
+	reg [8:0] commit_id;
+	
+	always @(posedge clk) begin
+		if (reset) begin
+			state   <= 0;
+			out_valid <= '{default:0};
+			commit_id   <= 0;
+		end else begin
+			if (sample_tick) begin
+				commit_id <= 0;
+			
+			add_pending_write <= 0;
+		
+			case (state)
+				IDLE: begin
+					if (in_valid) begin
+					
+						block_latched <= block;
+						
+						operation_latched <= operation_in;
+	
+						dest_latched 	 <= dest_in;
+						dest_acc_latched <= dest_acc_in;
+
+						src_a_latched <= src_a_in;
+						src_b_latched <= src_b_in;
+						src_c_latched <= src_c_in;
+
+						src_a_reg_latched <= src_a_reg_in;
+						src_b_reg_latched <= src_b_reg_in;
+						src_c_reg_latched <= src_c_reg_in;
+
+						arg_a_needed_latched <= arg_a_needed_in;
+						arg_b_needed_latched <= arg_b_needed_in;
+						arg_c_needed_latched <= arg_c_needed_in;
+
+						saturate_latched 		<= saturate_in;
+						use_accumulator_latched <= use_accumulator_in;
+						subtract_latched 		<= subtract_in;
+						signedness_latched 		<= signedness_in;
+						instr_shift_latched 	<= instr_shift_in;
+						no_shift_latched 		<= no_shift_in;
+						
+						res_addr_latched <= res_addr_in;
+						
+						branch_latched  <= branch;
+						commits_latched <= commits;
+						
+						state <= BUSY;
+					end
+				end
+				
+				BUSY: begin
+					if (arg_a_resolved && arg_b_resolved && arg_c_resolved && !accumulator_stall) begin
+						operation_out <= operation_latched;
+		
+						dest_out <= dest_latched;
+						dest_acc_out <= dest_acc_latched;
+
+						arg_a_out <= arg_a_latched;
+						arg_b_out <= arg_b_latched;
+						arg_c_out <= arg_c_latched;
+
+						saturate_out 		<= saturate_latched;
+						use_accumulator_out <= use_accumulator_latched;
+						subtract_out 		<= subtract_latched;
+						signedness_out 		<= signedness_latched;
+
+						instr_shift_out <= instr_shift_latched;
+						no_shift_out 	<= no_shift_latched;
+						
+						res_addr_out <= res_addr_latched;
+						
+						out_valid[branch_latched] <= 1;
+						
+						add_pending_write <= 1;
+						
+						state <= DONE;
+					end
+				end
+				
+				DONE: begin
+					if (out_ready[branch_latched]) begin
+						out_valid <= '{default:0};
+						state <= IDLE;
+					end
+				end
+			endcase
+		end
+	end
+endmodule
+
 
 module multiply_stage #(parameter data_width = 16)
 	(
@@ -603,20 +1016,20 @@ module resource_branch #(parameter data_width = 16, parameter handle_width = 8)
 endmodule
 
 module commit_master #(parameter data_width = 16,
-					   parameter n_branches = 2)
+					   parameter `N_INSTR_BRANCHES = 2)
 	(
 		input wire clk,
 		input wire reset,
 		
 		input wire sample_tick,
 		
-		input wire 						 out_valid [n_branches - 1 : 0],
-		input wire [2 * data_width - 1 : 0] result [n_branches - 1 : 0],
-		input wire [3 : 0] 					  dest [n_branches - 1 : 0],
-		input wire 		 				  dest_acc [n_branches - 1 : 0],
-		input wire 						   commits [n_branches - 1 : 0],
-		input wire [8 : 0]				 commit_id [n_branches - 1 : 0],
-		output reg 						  in_ready [n_branches - 1 : 0],
+		input wire 						 out_valid [`N_INSTR_BRANCHES - 1 : 0],
+		input wire [2 * data_width - 1 : 0] result [`N_INSTR_BRANCHES - 1 : 0],
+		input wire [3 : 0] 					  dest [`N_INSTR_BRANCHES - 1 : 0],
+		input wire 		 				  dest_acc [`N_INSTR_BRANCHES - 1 : 0],
+		input wire 						   commits [`N_INSTR_BRANCHES - 1 : 0],
+		input wire [8 : 0]				 commit_id [`N_INSTR_BRANCHES - 1 : 0],
+		output reg 						  in_ready [`N_INSTR_BRANCHES - 1 : 0],
 		
 		output reg [3 : 0] 				channel_write_addr,
 		output reg [data_width - 1 : 0] channel_write_val,
@@ -645,7 +1058,7 @@ module commit_master #(parameter data_width = 16,
 		end else if (sample_tick) begin
 			next_commit_id <= 0;
 		end else begin
-			for (i = 0; i < n_branches && !found; i = i + 1) begin
+			for (i = 0; i < `N_INSTR_BRANCHES && !found; i = i + 1) begin
 				if (out_valid[i] && commit_id[i] == next_commit_id) begin
 					if (dest_acc[i]) begin
 						acc_write_val <= result[i];

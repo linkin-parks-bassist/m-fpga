@@ -31,7 +31,11 @@ module instr_decoder #(parameter data_width = 16)
 		
 		output logic src_a_needed,
 		output logic src_b_needed,
-		output logic src_c_needed
+		output logic src_c_needed,
+		
+		output logic [$clog2(n_branches) - 1 : 0] branch,
+		
+		output logic commits
 	);
 	
 	localparam operand_type_start_index = 4 * `BLOCK_REG_ADDR_WIDTH + `BLOCK_INSTR_OP_WIDTH;
@@ -83,4 +87,20 @@ module instr_decoder #(parameter data_width = 16)
 	assign subtract			= (operation == `BLOCK_INSTR_SUB);
 	assign signedness 		= 1;
 	assign dest_acc 		= (operation == `BLOCK_INSTR_MACZ || operation == `BLOCK_INSTR_MAC);
+	
+	always_comb begin
+		if (operation == `BLOCK_INSTR_DELAY_READ || operation == `BLOCK_INSTR_DELAY_WRITE)
+			branch = delay_branch;
+		else if (operation == `BLOCK_INSTR_LUT)
+			branch = lut_branch;
+		else if (operation == `BLOCK_INSTR_SAVE 	|| operation == `BLOCK_INSTR_LOAD
+			  || operation == `BLOCK_INSTR_SAVE_ACC || operation == `BLOCK_INSTR_LOAD_ACC)
+			branch = mem_branch;
+		else
+			branch = main_branch;
+	end
+	
+	assign commits = (operation != `BLOCK_INSTR_SAVE
+				   && operation != `BLOCK_INSTR_SAVE_ACC
+				   && operation != `BLOCK_INSTR_DELAY_WRITE);
 endmodule
