@@ -348,6 +348,8 @@ module delay_buffer_controller #(parameter data_width = 16, parameter addr_width
 		output reg [data_width - 1 : 0] data_out,
 		output reg data_out_valid,
 		
+		output reg [data_width : 0] gain,
+		
 		input wire write,
 		
 		input wire signed [data_width - 1 : 0] data_in,
@@ -397,7 +399,6 @@ module delay_buffer_controller #(parameter data_width = 16, parameter addr_width
 	reg [    addr_width - 1 : 0] position;
 	
 	reg wrapped;
-	reg [data_width : 0] gain;
 	
 	reg [2:0] state;
 	
@@ -489,6 +490,9 @@ module delay_buffer_controller #(parameter data_width = 16, parameter addr_width
 							position <= position + 1;
 						end
 						
+						if (wrapped && gain < 16'b0100000000000000)
+							gain <= gain + 16'b0000000001000000;
+						
 						write_done <= 1;
 						state <= IDLE;
 					end
@@ -571,8 +575,9 @@ module delay_master_2
 	reg signed [data_width - 1 : 0] buf_data_in;
 	reg signed [data_width - 1 : 0] buf_delay_inc;
 	
-	reg  [n_buffers  - 1 : 0] buf_init;
+	reg [data_width - 1 : 0] buf_gain [n_buffers - 1 : 0];
 	
+	reg  [n_buffers  - 1 : 0] buf_init;
 	
 	wire [n_buffers  - 1 : 0] buf_mem_read_req;
 	wire [n_buffers  - 1 : 0] buf_mem_write_req;
@@ -599,6 +604,8 @@ module delay_master_2
 					
 					.data_out(buf_data_out[i]),
 					.data_out_valid(buf_data_out_valid[i]),
+					
+					.gain(buf_gain[i]),
 					
 					.write(buf_write[i]),
 					
@@ -656,6 +663,13 @@ module delay_master_2
 	reg write_dispatched;
 	reg signed [data_width - 1 : 0] write_data_latched;
 	reg signed [data_width - 1 : 0]  write_inc_latched;
+	
+	reg read_data_obtained;
+	
+	reg signed [data_width - 1 : 0] read_data;
+	reg signed [data_width - 1 : 0] read_gain;
+	
+	wire signed [2 * data_width - 1 : 0] read_product = read_data * read_gain;
 
 	always @(posedge clk) begin
 		invalid_alloc <= 0;
@@ -672,12 +686,15 @@ module delay_master_2
 		
 		inc_buf_addr <= 0;
 		
+		read_data_obtained <= 0;
+		
 		if (reset) begin
 			buf_init_addr <= 0;
 			n_buffers_initd <= 0;
 			reading <= 0;
 			writing <= 0;
 			write_dispatched <= 0;
+			read_data_obtained <= 0;
 		end else if (enable) begin
 			
 			if (inc_buf_addr)
@@ -699,18 +716,23 @@ module delay_master_2
 			end
 			
 			if (reading) begin
-				if (buf_data_out_valid[read_handle]) begin
-					data_out <= buf_data_out[read_handle];
+				if (read_data_obtained) begin
+					data_out <= read_product >>> 14;
 					read_valid <= 1;
 					reading <= 0;
+				end else if (buf_data_out_valid[read_handle_latched]) begin
+					read_data <= buf_data_out[read_handle_latched];
+					read_gain <= buf_gain[read_handle_latched];
+					read_data_obtained <= 1;
 				end
 			end else if (read_req) begin
 				if (read_req_valid) begin
+					reading <= 1;
 					if (buf_data_out_valid[read_handle]) begin
-						data_out <= buf_data_out[read_handle];
-						read_valid <= 1;
+						read_data <= buf_data_out[read_handle];
+						read_gain <= buf_gain[read_handle];
+						read_data_obtained <= 1;
 					end else begin
-						reading <= 1;
 						read_handle_latched <= read_handle;
 					end
 				end else begin

@@ -23,7 +23,7 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		output reg out_valid,
 		input wire out_ready,
 		
-		output reg [$clog2(n_blocks) - 1 : 0] block,
+		output reg [$clog2(n_blocks) - 1 : 0] block_out,
 		
 		output reg [4 : 0] operation_out,
 		
@@ -168,7 +168,7 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 					out_valid <= 0;
 				
 				if (out_free && current_instr_valid) begin
-					block <= current_block;
+					block_out <= current_block;
 				
 					operation_out <= operation;
 			

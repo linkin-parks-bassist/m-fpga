@@ -161,7 +161,7 @@ module dsp_core_3 #(
 	
 	wire out_ready_ifds;
 	wire out_valid_ifds;
-	wire [$clog2(n_blocks) - 1 : 0] block_ifds;
+	wire [$clog2(n_blocks) - 1 : 0] block_out_ifds;
 	
 	wire [$clog2(n_blocks) - 1 : 0] instr_read_addr_ifds;
 	wire [31 : 0] 					instr_read_val_ifds = instr_read_val;
@@ -213,7 +213,7 @@ module dsp_core_3 #(
 			.instr_read_val(instr_read_val_ifds),
 			.out_valid(out_valid_ifds),
 			.out_ready(out_ready_ifds),
-			.block(block_ifds),
+			.block_out(block_out_ifds),
 			.operation_out(operation_out_ifds),
 			.src_a_out(src_a_out_ifds),
 			.src_b_out(src_b_out_ifds),
@@ -271,6 +271,8 @@ module dsp_core_3 #(
 	wire commits_out_ofs;
 	wire [8:0] commit_id_out_ofs;
 	wire ext_write_out_ofs;
+	
+	wire [$clog2(n_blocks) - 1 : 0] block_out_ofs;
 
 	operand_fetch_stage #(.data_width(data_width), .n_blocks(n_blocks), .n_block_regs(n_block_regs)) operand_fetch_stage
 		(
@@ -283,7 +285,8 @@ module dsp_core_3 #(
 			.sample_tick(tick),
 			.in_valid(out_valid_ifds),
 			.in_ready(out_ready_ifds),
-			.block(block_ifds),
+			.block_in(block_out_ifds),
+			.block_out(block_out_ofs),
 			.operation_in(operation_out_ifds),
 			.dest_in(dest_out_ifds),
 			.dest_acc_in(dest_acc_out_ifds),
@@ -539,7 +542,7 @@ module dsp_core_3 #(
 
 	wire [8:0] commit_id_out_delay;
 
-	resource_branch #(.data_width(data_width), .handle_width(8)) delay_stage
+	resource_branch #(.data_width(data_width), .handle_width(8), .n_blocks(n_blocks)) delay_stage
 		(
 			.clk(clk),
 			.reset(reset | resetting),
@@ -550,6 +553,9 @@ module dsp_core_3 #(
 			
 			.out_valid(out_valid_final_stages[`INSTR_BRANCH_DELAY]),
 			.out_ready(in_ready_commit_master[`INSTR_BRANCH_DELAY]),
+			
+			.block_in(block_out_ofs),
+			.block_out(),
 			
 			.write(ext_write_out_ofs),
 			
@@ -591,6 +597,10 @@ module dsp_core_3 #(
 			.in_ready(in_ready_lut),
 			.out_valid(out_valid_final_stages[`INSTR_BRANCH_LUT]),
 			.out_ready(in_ready_commit_master[`INSTR_BRANCH_LUT]),
+			
+			.block_in(block_out_ofs),
+			.block_out(),
+			
 			.write(0),
 			.handle_in(res_addr_out_ofs),
 			.arg_a_in(arg_a_out_ofs),
@@ -657,6 +667,9 @@ module dsp_core_3 #(
 			
 			.out_valid(out_valid_final_stages[`INSTR_BRANCH_MEM]),
 			.out_ready(in_ready_commit_master[`INSTR_BRANCH_MEM]),
+			
+			.block_in(block_out_ofs),
+			.block_out(),
 			
 			.write(ext_write_out_ofs),
 			

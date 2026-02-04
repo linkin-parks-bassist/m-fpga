@@ -830,8 +830,8 @@ int main(int argc, char** argv)
 	m_effect_desc_add_param(eff, param3);
 	m_effect_desc_add_param(eff, param4);
 	
-	int delay_buf_size = 2048;
-	int delay_initial  = 512 << 8;
+	int delay_buf_size = 512;
+	int delay_initial  = 265 << 8;
 	
 	m_fpga_batch_append(&batch, COMMAND_ALLOC_SRAM_DELAY);
 	m_fpga_batch_append(&batch, delay_buf_size >> 8);
@@ -841,19 +841,14 @@ int main(int argc, char** argv)
 	m_fpga_batch_append(&batch, delay_initial >> 8);
 	m_fpga_batch_append(&batch, delay_initial >> 0);
 	
-	m_fpga_batch_append(&batch, COMMAND_ALLOC_SRAM_DELAY);
-	m_fpga_batch_append(&batch, 64 >> 8);
-	m_fpga_batch_append(&batch, 64 >> 0);
-	m_fpga_batch_append(&batch, 32 >> 24);
-	m_fpga_batch_append(&batch, 32 >> 16);
-	m_fpga_batch_append(&batch, 32 >> 8);
-	m_fpga_batch_append(&batch, 32 >> 0);
-	
 	
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_delay_read(0, 1)));
 	
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_madd(0, 1, 1, 0, 0, 0, 0, 0)));
+	m_effect_desc_add_register_val(eff, 1, 0, 0, "- 0 1.0");
+	
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_delay_write(0, 0, 0, 1, 0)));
-	m_effect_desc_add_register_val_literal(eff, 1, 0, 1);
+	m_effect_desc_add_register_val_literal(eff, 2, 0, 0);
 	
 	m_fpga_resource_report res = m_empty_fpga_resource_report();
 	m_fpga_resource_report local;

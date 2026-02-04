@@ -4,7 +4,7 @@
 `include "seq.vh"
 `include "alu.vh"
 
-module resource_branch #(parameter data_width = 16, parameter handle_width = 8)
+module resource_branch #(parameter data_width = 16, parameter handle_width = 8, parameter n_blocks = 256)
 	(
 		input wire clk,
 		input wire reset,
@@ -16,6 +16,9 @@ module resource_branch #(parameter data_width = 16, parameter handle_width = 8)
 		
 		output wire out_valid,
 		input  wire out_ready,
+		
+		input wire [$clog2(n_blocks) - 1 : 0] block_in,
+		output reg [$clog2(n_blocks) - 1 : 0] block_out,
 		
 		input wire write,
 		
@@ -76,6 +79,8 @@ module resource_branch #(parameter data_width = 16, parameter handle_width = 8)
 						commit_id_out <= commit_id_in;
 						
 						write_latched <= write;
+						
+						block_out <= block_in;
 						
 						state <= REQ;
 					end

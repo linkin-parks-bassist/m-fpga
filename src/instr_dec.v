@@ -55,7 +55,7 @@ module instr_decoder #(parameter data_width = 16)
 		 operation != `BLOCK_INSTR_LOAD_ACC 	&&
 		 operation != `BLOCK_INSTR_SAVE_ACC 	&&
 		 operation != `BLOCK_INSTR_CLEAR_ACC 	&&
-		 operation != `BLOCK_INSTR_DELAY_WRITE 	&&
+		 operation != `BLOCK_INSTR_DELAY_READ 	&&
 		 operation != `BLOCK_INSTR_MOV_UACC);
 	
 	assign src_b_needed = (

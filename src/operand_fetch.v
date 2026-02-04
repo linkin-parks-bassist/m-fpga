@@ -21,7 +21,8 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		
 		input wire [$clog2(n_blocks) - 1 : 0] n_blocks_running,
 		
-		input wire [$clog2(n_blocks) - 1 : 0] block,
+		input wire [$clog2(n_blocks) - 1 : 0] block_in,
+		output reg [$clog2(n_blocks) - 1 : 0] block_out,
 		
 		input wire [4 : 0] operation_in,
 		
@@ -352,7 +353,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 				IDLE: begin
 					if (in_valid) begin
 					
-						block_latched <= block;
+						block_latched <= block_in;
 						
 						operation_latched <= operation_in;
 	
@@ -382,6 +383,9 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 						
 						branch_latched  <= branch;
 						commits_latched <= commits;
+						
+						if (block_in == 0)
+							inject_pending_ch0_write <= 1;
 						
 						ext_write_latched <= ext_write_in;
 						
@@ -416,8 +420,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 						
 						ext_write_out <= ext_write_latched;
 						
-						if (block_latched == n_blocks_running - 1)
-							inject_pending_ch0_write <= 1;
+						block_out <= block_latched;
 						
 						if (commits_latched) begin
 							commit_id_out <= commit_id;
