@@ -559,7 +559,7 @@ int sim_handle_transfer_batch(sim_engine *sim, m_fpga_transfer_batch batch)
 	
 	return 0;
 }
-
+/*
 int sim_pipeline_process_sample(sim_pipeline *pipeline, int16_t sample)
 {
 	if (!pipeline)
@@ -767,6 +767,7 @@ int16_t sim_process_sample(sim_engine *sim, int16_t sample)
 	
 	return sim->sample_out;
 }
+*/
 
 int main(int argc, char** argv)
 {
@@ -818,42 +819,19 @@ int main(int argc, char** argv)
 	
 	m_fpga_transfer_batch batch = m_new_fpga_transfer_batch();
 	m_effect_desc *eff = new_m_effect_desc("_");
-	m_parameter_pll *params = NULL;
 	
-	m_parameter *param1 = new_m_parameter_wni("Center", "center", 6, 0.1, 10.0);
-	m_parameter *param2 = new_m_parameter_wni("Depth", "depth", 5.0, 0.0, 5.0);
-	m_parameter *param3 = new_m_parameter_wni("Rate", "rate", 1.0, 0.0, 2.0);
-	m_parameter *param4 = new_m_parameter_wni("Strength", "strength", 1.0, 0.0, 1.0);
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_read(0, 1)));
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_madd(1, 0, 0, 1, 1, 1, 1, 1)));
+	m_effect_desc_add_register_val(eff, 1, 0, 1, "1.0");
+	m_effect_desc_add_register_val_literal(eff, 1, 1, 1);
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_lut_read(1, 0, 0, 2)));
 	
-	m_effect_desc_add_param(eff, param1);
-	m_effect_desc_add_param(eff, param2);
-	m_effect_desc_add_param(eff, param3);
-	m_effect_desc_add_param(eff, param4);
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_write(1, 0, 0)));
 	
-	int delay_buf_size = 512;
-	int delay_initial  = 265 << 8;
-	
-	m_fpga_batch_append(&batch, COMMAND_ALLOC_SRAM_DELAY);
-	m_fpga_batch_append(&batch, delay_buf_size >> 8);
-	m_fpga_batch_append(&batch, delay_buf_size >> 0);
-	m_fpga_batch_append(&batch, delay_initial >> 24);
-	m_fpga_batch_append(&batch, delay_initial >> 16);
-	m_fpga_batch_append(&batch, delay_initial >> 8);
-	m_fpga_batch_append(&batch, delay_initial >> 0);
-	
-	
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_delay_read(0, 1)));
-	
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_madd(0, 1, 1, 0, 0, 0, 0, 0)));
-	m_effect_desc_add_register_val(eff, 1, 0, 0, "- 0 1.0");
-	
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_delay_write(0, 0, 0, 1, 0)));
-	m_effect_desc_add_register_val_literal(eff, 2, 0, 0);
-	
+	m_fpga_resource_report local = m_empty_fpga_resource_report();
 	m_fpga_resource_report res = m_empty_fpga_resource_report();
-	m_fpga_resource_report local;
 	
-	m_fpga_transfer_batch_append_effect(eff, &res, &local, params, &batch);
+	m_fpga_transfer_batch_append_effect(eff, &res, &local, NULL, &batch);
 	
 	m_fpga_batch_append(&batch, COMMAND_SWAP_PIPELINES);
 	

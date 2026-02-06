@@ -1,5 +1,5 @@
 `include "instr_dec.vh"
-`include "block.vh"
+
 `include "lut.vh"
 
 module pipeline_block

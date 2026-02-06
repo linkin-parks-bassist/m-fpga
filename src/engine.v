@@ -1,8 +1,8 @@
 `include "engine.vh"
 
-module dsp_engine
+module dsp_engine_seq
 	#(
-		parameter n_blocks 			= 4,
+		parameter n_blocks 			= 255,
 		parameter n_block_registers = 16,
 		parameter data_width 		= 16,
 		parameter n_channels 		= 16,
@@ -25,7 +25,11 @@ module dsp_engine
         
         output reg ready,
         
-        output wire [$clog2(spi_fifo_length) : 0] fifo_count
+        output wire [$clog2(spi_fifo_length) : 0] fifo_count,
+
+        output wire current_pipeline,
+
+        output wire [7:0] out
     );
     
     reg  signed [data_width - 1 : 0]  in_sample_latched;
@@ -41,34 +45,26 @@ module dsp_engine
     wire pipeline_a_error;
     wire pipeline_b_error;
 
-    wire current_pipeline;
     wire pipelines_swapping;
 
     wire [1:0] block_instr_write;
     wire [1:0] block_reg_write;
     wire [1:0] block_reg_update;
-    wire [1:0] alloc_sram_delay;
-
-    wire pipeline_a_block_instr_write 	= block_instr_write[current_pipeline];
-    wire pipeline_a_block_reg_write 	= block_reg_write  [current_pipeline];
-    wire pipeline_a_block_reg_update 	= block_reg_update [current_pipeline];
-    wire pipeline_a_alloc_sram_delay 	= alloc_sram_delay [current_pipeline];
-
-    wire pipeline_b_block_instr_write 	= block_instr_write[~current_pipeline];
-    wire pipeline_b_block_reg_write 	= block_reg_write  [~current_pipeline];
-    wire pipeline_b_block_reg_update 	= block_reg_update [~current_pipeline];
-    wire pipeline_b_alloc_sram_delay 	= alloc_sram_delay [~current_pipeline];
+    wire [1:0] alloc_delay;
+    wire [1:0] pipeline_reset;
+    wire [1:0] pipeline_full_reset;
+    wire [1:0] pipeline_enables;
+    wire [1:0] pipeline_resetting;
 
     reg pipeline_tick = 0;
 
     wire [$clog2(n_blocks) 	    - 1 : 0] block_target;
-    wire [`BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target;
+    wire [$clog2(n_blocks) + `BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target;
 
     wire [data_width 		 - 1 : 0] ctrl_data_out;
     wire [`BLOCK_INSTR_WIDTH - 1 : 0] ctrl_instr_out;
 
     wire swap_pipelines;
-    wire [1:0] reset_pipeline;
     wire controller_ready;
 
     reg ctrl_inp_ready = 0;
@@ -93,20 +89,43 @@ module dsp_engine
     reg [7:0] state = `ENGINE_STATE_READY;
 
     reg inp_fifo_waiting = 0;
+
+    wire [1:0] reg_write_acks;
     
-    pipeline
+    wire set_input_gain;
+    wire set_output_gain;
+    
+    wire pipeline_a_block_instr_write 	= block_instr_write		[current_pipeline];
+    wire pipeline_a_block_reg_write 	= block_reg_write  		[current_pipeline];
+    wire pipeline_a_block_reg_update 	= block_reg_update 		[current_pipeline];
+    wire pipeline_a_alloc_delay 		= alloc_delay 			[current_pipeline];
+    wire pipeline_a_enable 				= pipeline_enables 		[current_pipeline];
+    wire pipeline_a_full_reset 			= pipeline_full_reset	[current_pipeline];
+    wire pipeline_a_resetting;
+    wire pipeline_a_reset	 			= pipeline_reset		[current_pipeline];
+
+    wire pipeline_b_block_instr_write 	= block_instr_write		[~current_pipeline];
+    wire pipeline_b_block_reg_write 	= block_reg_write  		[~current_pipeline];
+    wire pipeline_b_block_reg_update 	= block_reg_update 		[~current_pipeline];
+    wire pipeline_b_alloc_delay 		= alloc_delay 			[~current_pipeline];
+    wire pipeline_b_enable 				= pipeline_enables 		[~current_pipeline];
+    wire pipeline_b_full_reset 			= pipeline_full_reset	[~current_pipeline];
+    wire pipeline_b_resetting;
+    wire pipeline_b_reset	 			= pipeline_reset		[~current_pipeline];
+    
+    assign pipeline_resetting = {pipeline_b_resetting, pipeline_a_resetting};
+    
+    pipeline_seq
 		#(
+			.data_width(data_width),
 			.n_blocks(n_blocks),
 			.n_block_registers(n_block_registers),
-			.data_width(data_width),
-			.n_channels(n_channels),
-			.n_sram_banks(n_sram_banks),
-			.sram_bank_size(sram_bank_size)
+			.n_channels(n_channels)
 		)
 		pipeline_a
 		(
 			.clk(clk),
-			.reset(reset | reset_pipeline[~current_pipeline]),
+			.reset(reset | pipeline_a_reset),
 			
 			.in_sample(in_sample_amped),
 			.in_valid(pipeline_tick),
@@ -122,25 +141,30 @@ module dsp_engine
 			.instr_write(pipeline_a_block_instr_write),
 		
 			.ctrl_data(ctrl_data_out),
+			.buf_init_delay(buf_init_delay),
 			.reg_write(pipeline_a_block_reg_write),
+			.reg_write_ack(reg_write_acks[0]),
 			.reg_update(pipeline_a_block_reg_update),
 		
-			.alloc_sram_delay(pipeline_a_alloc_sram_delay)
+			.alloc_delay(pipeline_a_alloc_delay),
+			
+			.full_reset(pipeline_a_full_reset),
+			.enable(pipeline_a_enable),
+			
+			.resetting(pipeline_a_resetting)
 		);
     
-    pipeline
+    pipeline_seq
 		#(
+			.data_width(data_width),
 			.n_blocks(n_blocks),
 			.n_block_registers(n_block_registers),
-			.data_width(data_width),
-			.n_channels(n_channels),
-			.n_sram_banks(n_sram_banks),
-			.sram_bank_size(sram_bank_size)
+			.n_channels(n_channels)
 		)
 		pipeline_b
 		(
 			.clk(clk),
-			.reset(reset | reset_pipeline[current_pipeline]),
+			.reset(reset | pipeline_b_reset),
 			
 			.in_sample(in_sample_amped),
 			.in_valid(pipeline_tick),
@@ -156,10 +180,16 @@ module dsp_engine
 			.instr_write(pipeline_b_block_instr_write),
 		
 			.ctrl_data(ctrl_data_out),
+			.buf_init_delay(buf_init_delay),
 			.reg_write(pipeline_b_block_reg_write),
 			.reg_update(pipeline_b_block_reg_update),
 		
-			.alloc_sram_delay(pipeline_b_alloc_sram_delay)
+			.alloc_delay(pipeline_b_alloc_delay),
+
+            .full_reset(pipeline_b_full_reset),
+			.enable(pipeline_b_enable),
+			
+			.resetting(pipeline_b_resetting)
 		);
 	
 	
@@ -180,10 +210,10 @@ module dsp_engine
 			
 			.count(fifo_count)
 		);
-	
-	
-    
-    control_unit #(.n_blocks(n_blocks), .data_width(data_width), .n_block_registers(n_block_registers)) controller
+		
+	wire [2 * data_width - 1 : 0] buf_init_delay;
+
+    control_unit_seq #(.n_blocks(n_blocks), .data_width(data_width), .n_block_registers(n_block_registers)) controller
 		(
 			.clk(clk),
 			.reset(reset),
@@ -191,6 +221,8 @@ module dsp_engine
 			.in_byte(command_byte),
 			.in_ready(inp_fifo_nonempty),
 			.next(inp_fifo_next),
+			
+			.current_pipeline(current_pipeline),
 			
 			.block_target(block_target),
 			.reg_target(reg_target),
@@ -201,42 +233,49 @@ module dsp_engine
 			.block_reg_write(block_reg_write),
 			.block_reg_update(block_reg_update),
 			
-			.alloc_sram_delay(alloc_sram_delay),
+			.alloc_delay(alloc_delay),
+			.buf_init_delay(buf_init_delay),
 			
 			.swap_pipelines(swap_pipelines),
 			.pipelines_swapping(pipelines_swapping),
-			.reset_pipeline(reset_pipeline),
+			.pipeline_reset(pipeline_reset),
+			.pipeline_full_reset(pipeline_full_reset),
+			.pipeline_resetting(pipeline_resetting),
+			.pipeline_enables(pipeline_enables),
+			
+			.set_input_gain(set_input_gain),
+			.set_output_gain(set_output_gain),
 			
 			.invalid(invalid_command)
 		);
 	
-	mixer #(.data_width(data_width), .gain_shift(5)) mixerr (
-			.clk(clk),
-			.reset(reset),
-			
-			.in_sample(in_sample_latched),
-			.in_sample_out(in_sample_amped),
-			
-			.out_sample_in_a(out_samples[0]),
-			.out_sample_in_b(out_samples[1]),
-			
-			.out_sample(out_sample_mixed),
-			
-			.data_in(0),
-			
-			.in_sample_valid(apply_input_gain),
-			.out_samples_valid(mix_outputs),
-			
-			.in_sample_ready(in_sample_valid),
-			.out_sample_ready(out_sample_valid),
-			
-			.set_input_gain(0),
-			.set_output_gain(0),
-			
-			.swap_pipelines(swap_pipelines),
-			.pipelines_swapping(pipelines_swapping),
-			.current_pipeline(current_pipeline)
-		);
+    mixer #(.data_width(data_width), .gain_shift(5)) mixerr (
+        .clk(clk),
+        .reset(reset),
+        
+        .in_sample(in_sample_latched),
+        .in_sample_out(in_sample_amped),
+        
+        .out_sample_in_a(out_samples[0]),
+        .out_sample_in_b(out_samples[1]),
+        
+        .out_sample(out_sample_mixed),
+        
+        .data_in(ctrl_data_out),
+        
+        .in_sample_valid(apply_input_gain),
+        .out_samples_valid(mix_outputs),
+        
+        .in_sample_ready(in_sample_valid),
+        .out_sample_ready(out_sample_valid),
+        
+        .set_input_gain(set_input_gain),
+        .set_output_gain(set_output_gain),
+        
+        .swap_pipelines(swap_pipelines),
+        .pipelines_swapping(pipelines_swapping),
+        .current_pipeline(current_pipeline)
+    );
 	
 	always @(posedge clk) begin
 		pipeline_tick 		<= 0;
@@ -257,7 +296,7 @@ module dsp_engine
 					apply_input_gain <= 0;
 					
 					sample_ctr <= sample_ctr + 1;
-					pipeline_tick <= 1;
+					pipeline_tick <= 1;	
 					
 					ready <= 0;
 					state <= `ENGINE_STATE_PROCESSING_WAIT;

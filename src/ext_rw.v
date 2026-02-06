@@ -1,8 +1,8 @@
 `include "instr_dec.vh"
-`include "block.vh"
+
 `include "lut.vh"
-`include "seq.vh"
-`include "alu.vh"
+`include "core.vh"
+
 
 module resource_branch #(parameter data_width = 16, parameter handle_width = 8, parameter n_blocks = 256)
 	(

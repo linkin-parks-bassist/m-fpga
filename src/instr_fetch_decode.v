@@ -1,8 +1,8 @@
 `include "instr_dec.vh"
-`include "block.vh"
+
 `include "lut.vh"
-`include "seq.vh"
-`include "alu.vh"
+`include "core.vh"
+
 
 
 module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter n_block_regs = 2)
@@ -26,7 +26,7 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		output reg [$clog2(n_blocks) - 1 : 0] block_out,
 		
 		output reg [4 : 0] operation_out,
-		
+	
 		output reg [3 : 0] src_a_out,
 		output reg [3 : 0] src_b_out,
 		output reg [3 : 0] src_c_out,
@@ -35,26 +35,26 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		output reg src_a_reg_out,
 		output reg src_b_reg_out,
 		output reg src_c_reg_out,
-
-		output reg saturate_out,
-		output reg use_accumulator_out,
-		output reg subtract_out,
-		output reg signedness_out,
-		output reg dest_acc_out,
-
-		output reg [4 : 0] instr_shift_out,
-		output reg no_shift_out,
 		
-		output reg [7 : 0] res_addr_out,
+		output reg saturate_disable_out,
+		output reg shift_disable_out,
+		output reg signedness_out,
+		
+		output reg [4  : 0] shift_out,
+		output reg [11 : 0] res_addr_out,
 		
 		output reg arg_a_needed_out,
 		output reg arg_b_needed_out,
 		output reg arg_c_needed_out,
 		
-		output reg [`N_INSTR_BRANCHES - 1 : 0] branch_out,
-		output reg commits_out,
+		output reg acc_needed_out,
 		
-		output reg ext_write_out
+		output reg writes_channel_out,
+		output reg writes_acc_out,
+		output reg commit_flag_out,
+		output reg writes_external_out,
+		
+		output reg [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch_out
 	);
 	
 	reg [31 : 0] current_instr;
@@ -64,34 +64,35 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 	reg instr_read_valid;
 	
 	wire [4 : 0] operation;
-
+	
 	wire [3 : 0] src_a;
 	wire [3 : 0] src_b;
 	wire [3 : 0] src_c;
 	wire [3 : 0] dest;
-
+	
 	wire src_a_reg;
 	wire src_b_reg;
 	wire src_c_reg;
-
-	wire saturate;
-	wire use_accumulator;
-	wire subtract;
+	
+	wire saturate_disable;
+	wire shift_disable;
 	wire signedness;
-	wire dest_acc;
-
-	wire [4 : 0] instr_shift;
-	wire no_shift;
-
-	wire [7 : 0] res_addr;
-
+	
+	wire [4 : 0] shift;
+	wire [11 : 0] res_addr;
+	
 	wire arg_a_needed;
 	wire arg_b_needed;
 	wire arg_c_needed;
 	
-	wire [`N_INSTR_BRANCHES - 1 : 0] branch;
-	wire commits;
-	wire ext_write;
+	wire acc_needed;
+	
+	wire writes_channel;
+	wire writes_acc;
+	wire commit_flag;
+	wire writes_external;
+	
+	wire [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch;
 	
 	instr_decoder #(.data_width(data_width)) dec
 	(
@@ -107,25 +108,26 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		.src_a_reg(src_a_reg),
 		.src_b_reg(src_b_reg),
 		.src_c_reg(src_c_reg),
-
-		.saturate(saturate),
-		.use_accumulator(use_accumulator),
-		.subtract(subtract),
-		.signedness(signedness),
-		.dest_acc(dest_acc),
-
-		.instr_shift(instr_shift),
-		.no_shift(no_shift),
 		
+		.saturate_disable(saturate_disable),
+		.shift_disable(shift_disable),
+		.signedness(signedness),
+		
+		.shift(shift),
 		.res_addr(res_addr),
 		
-		.src_a_needed(arg_a_needed),
-		.src_b_needed(arg_b_needed),
-		.src_c_needed(arg_c_needed),
+		.arg_a_needed(arg_a_needed),
+		.arg_b_needed(arg_b_needed),
+		.arg_c_needed(arg_c_needed),
 		
-		.branch(branch),
-		.commits(commits),
-		.ext_write(ext_write)
+		.acc_needed(acc_needed),
+		
+		.writes_channel(writes_channel),
+		.writes_acc(writes_acc),
+		.commit_flag(commit_flag),
+		.writes_external(writes_external),
+		
+		.branch(branch)
 	);
 	
 	// if the current output has been taken
@@ -171,34 +173,35 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 					block_out <= current_block;
 				
 					operation_out <= operation;
-			
+	
 					src_a_out <= src_a;
 					src_b_out <= src_b;
 					src_c_out <= src_c;
-					dest_out  <= dest;
+					dest_out <= dest;
 					
 					src_a_reg_out <= src_a_reg;
 					src_b_reg_out <= src_b_reg;
 					src_c_reg_out <= src_c_reg;
-
-					saturate_out 		<= saturate;
-					use_accumulator_out <= use_accumulator;
-					subtract_out 		<= subtract;
-					signedness_out 		<= signedness;
-					dest_acc_out 		<= dest_acc;
-
-					instr_shift_out <= instr_shift;
-					no_shift_out 	<= no_shift;
 					
+					saturate_disable_out <= saturate_disable;
+					shift_disable_out <= shift_disable;
+					signedness_out <= signedness;
+					
+					shift_out <= shift;
 					res_addr_out <= res_addr;
 					
 					arg_a_needed_out <= arg_a_needed;
 					arg_b_needed_out <= arg_b_needed;
 					arg_c_needed_out <= arg_c_needed;
 					
-					branch_out  	<= branch;
-					commits_out 	<= commits;
-					ext_write_out 	<= ext_write;
+					acc_needed_out <= acc_needed;
+					
+					writes_channel_out <= writes_channel;
+					writes_acc_out <= writes_acc;
+					commit_flag_out <= commit_flag;
+					writes_external_out <= writes_external;
+					
+					branch_out <= branch;
 					
 					out_valid_next <= 1;
 				end

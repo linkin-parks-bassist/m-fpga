@@ -1,8 +1,8 @@
 `include "instr_dec.vh"
-`include "block.vh"
+
 `include "lut.vh"
-`include "seq.vh"
-`include "alu.vh"
+`include "core.vh"
+
 
 module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter n_block_regs = 2)
 	(
@@ -25,9 +25,10 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		output reg [$clog2(n_blocks) - 1 : 0] block_out,
 		
 		input wire [4 : 0] operation_in,
+		output reg [4 : 0] operation_out,
 		
 		input wire [3 : 0] dest_in,
-		input wire dest_acc_in,
+		output reg [3 : 0] dest_out,
 
 		input wire signed [3 : 0] src_a_in,
 		input wire signed [3 : 0] src_b_in,
@@ -37,60 +38,55 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		input wire src_b_reg_in,
 		input wire src_c_reg_in,
 		
-		input wire saturate_in,
-		input wire use_accumulator_in,
-		input wire subtract_in,
-		input wire signedness_in,
-
-		input wire [4 : 0] shift_in,
-		input wire no_shift_in,
-		
-		input wire [7 : 0] res_addr_in,
-		
 		input wire arg_a_needed_in,
 		input wire arg_b_needed_in,
 		input wire arg_c_needed_in,
-		
-		input wire [`N_INSTR_BRANCHES - 1 : 0] branch,
-		input wire commits,
-		
-		input wire ext_write_in,
-		
-		output reg [4 : 0] operation_out,
-		
-		output reg [3 : 0] dest_out,
-		output reg dest_acc_out,
 
 		output reg signed [data_width - 1 : 0] arg_a_out,
 		output reg signed [data_width - 1 : 0] arg_b_out,
 		output reg signed [data_width - 1 : 0] arg_c_out,
 		
+		input wire saturate_disable_in,
+		output reg saturate_disable_out,
+		
+		input wire signedness_in,
+		output reg signedness_out,
+		
+		input wire acc_needed_in,
+
+		input wire [4 : 0] shift_in,
+		output reg [4 : 0] shift_out,
+		input wire shift_disable_in,
+		output reg shift_disable_out,
+		
+		input wire [7 : 0] res_addr_in,
+		output reg [7 : 0] res_addr_out,
+		
+		input wire writes_external_in,
+		output reg writes_external_out,
+		
+		input wire writes_channel_in,
+		input wire writes_acc_in,
+		
+		output reg [8:0] commit_id_out,
+		
+		input wire commit_flag_in,
+		output reg commit_flag_out,
+		
 		input wire signed [2 * data_width - 1 : 0] accumulator_in,
 		output reg signed [2 * data_width - 1 : 0] accumulator_out,
 
-		output reg saturate_out,
-		output reg use_accumulator_out,
-		output reg subtract_out,
-		output reg signedness_out,
-
-		output reg [4 : 0] shift_out,
-		output reg no_shift_out,
-		
-		output reg [7 : 0] res_addr_out,
-		
-		output reg commits_out,
-		output reg [8:0] commit_id_out,
-		output reg ext_write_out,
+		input wire [`N_INSTR_BRANCHES - 1 : 0] branch,
 		
 		input wire [3 : 0] channel_write_addr,
 		input wire signed [data_width - 1 : 0] channel_write_val,
 		input wire channel_write_enable,
 		
-		output reg [3 : 0] channel_read_addr,
+		output reg 		  [3              : 0] channel_read_addr,
 		input wire signed [data_width - 1 : 0] channel_read_val,
 		
-		output reg [$clog2(n_blocks) + $clog2(n_block_regs) - 1 : 0] reg_read_addr,
-		input wire signed [data_width - 1 : 0] reg_read_val,
+		output reg [$clog2(n_blocks) + 4 - 1 : 0] reg_read_addr,
+		input wire signed 	 [data_width - 1 : 0] reg_read_val,
 		
 		input wire [2 * data_width - 1 : 0] acc_write_val,
 		input wire acc_write_enable
@@ -99,7 +95,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 	reg   [3 : 0] channels_scoreboard [15 : 0];
 	reg   [3 : 0] acc_pending_writes;
 	
-	wire accumulator_stall = (use_accumulator_latched && acc_pending_writes != 0);
+	wire accumulator_stall = (acc_needed_latched && acc_pending_writes != 0);
 	
 	reg add_pending_write;
 	
@@ -114,7 +110,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 			acc_pending_writes <= 0;
 		end else if (enable) begin
 			for (i = 0; i < 16; i = i + 1) begin
-				case ({(add_pending_write && dest_latched == i && !dest_acc_latched) ||
+				case ({(add_pending_write && dest_latched == i && !writes_acc_latched) ||
 						(inject_pending_ch0_write && i == 0),
 						channel_write_enable && channel_write_addr == i})
 					2'b10: begin
@@ -132,7 +128,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 				endcase
 			end
 			
-			case ({add_pending_write & dest_acc_latched, acc_write_enable})
+			case ({add_pending_write & writes_acc_latched, acc_write_enable})
 				2'b10: begin
 					acc_pending_writes <= acc_pending_writes + 1;
 				end
@@ -154,7 +150,8 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 	reg [4 : 0] operation_latched;
 	
 	reg [3 : 0] dest_latched;
-	reg dest_acc_latched;
+	reg writes_channel_latched;
+	reg writes_acc_latched;
 
 	reg signed [data_width - 1 : 0] src_a_latched;
 	reg signed [data_width - 1 : 0] src_b_latched;
@@ -170,19 +167,19 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 
 	reg signed [data_width - 1 : 0] accumulator_latched;
 	
-	reg saturate_latched;
-	reg use_accumulator_latched;
-	reg subtract_latched;
+	reg saturate_disable_latched;
+	reg acc_needed_latched;
 	reg signedness_latched;
 
 	reg [4 : 0] shift_latched;
-	reg no_shift_latched;
+	reg shift_disable_latched;
 	
 	reg [7 : 0] res_addr_latched;
 	
 	reg [`N_INSTR_BRANCHES - 1 : 0] branch_latched;
-	reg commits_latched;
-	reg ext_write_latched;
+	reg writes_external_latched;
+	
+	reg commit_flag_latched;
 	
 	wire arg_a_resolved = ~arg_a_needed_latched | arg_a_valid;
 	wire arg_b_resolved = ~arg_b_needed_latched | arg_b_valid;
@@ -210,8 +207,6 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 	reg signed [data_width - 1 : 0] arg_c_latched;
 	reg arg_c_valid;
 	
-	reg caught;
-	
 	always @(posedge clk) begin
 		if (reset) begin
 			arg_a_read_issued 		  <= 0;
@@ -223,14 +218,19 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 			arg_c_read_issued 		  <= 0;
 			arg_c_read_shift_register <= 0;
 			arg_c_valid 			  <= 0;
-			
-			caught <= 0;
 		end else if (enable && state == BUSY) begin
-			caught <= 0;
-			
-			if (!arg_a_needed_latched) arg_a_valid <= 1;
-			if (!arg_b_needed_latched) arg_b_valid <= 1;
-			if (!arg_c_needed_latched) arg_c_valid <= 1;
+			if (!arg_a_needed_latched) begin
+				arg_a_latched <= 0;
+				arg_a_valid <= 1;
+			end
+			if (!arg_b_needed_latched) begin
+				arg_b_latched <= 0;
+				arg_b_valid <= 1;
+			end
+			if (!arg_c_needed_latched) begin
+				arg_c_latched <= 0;
+				arg_c_valid <= 1;
+			end
 			
 			arg_a_read_shift_register <= arg_a_read_shift_register >> 1;
 			arg_b_read_shift_register <= arg_b_read_shift_register >> 1;
@@ -245,11 +245,10 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 					end
 				end else begin
 					if (src_a_reg_latched) begin
-						reg_read_addr <= {block_latched, src_a_latched[$clog2(n_block_regs) - 1 : 0]};
+						reg_read_addr <= {block_latched, 3'b000, src_a_latched[0]};
 						arg_a_read_issued <= 1;
 						arg_a_read_shift_register <= 3'b100;
 					end else begin
-						caught <= arg_pending_writes == 1;
 						if (arg_pending_writes == 0) begin
 							channel_read_addr <= src_a_latched;
 							arg_a_read_issued <= 1;
@@ -274,7 +273,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 					end
 				end else if (arg_a_resolved | arg_a_read_issued | (src_b_reg_latched != src_a_reg_latched)) begin
 					if (src_b_reg_latched) begin
-						reg_read_addr <= {block_latched, src_b_latched[$clog2(n_block_regs) - 1 : 0]};
+						reg_read_addr <= {block_latched, 3'b000, src_b_latched[0]};
 						arg_b_read_issued <= 1;
 						arg_b_read_shift_register <= 3'b100;
 					end else begin
@@ -303,7 +302,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 				end else if ((arg_a_resolved || arg_a_read_issued || (src_b_reg_latched != src_a_reg_latched))
 						  && (arg_b_resolved || arg_b_read_issued || (src_c_reg_latched != src_b_reg_latched))) begin
 					if (src_c_reg_latched) begin
-						reg_read_addr <= {block_latched, src_c_latched[$clog2(n_block_regs) - 1 : 0]};
+						reg_read_addr <= {block_latched, 3'b000, src_c_latched[0]};
 						arg_c_read_issued <= 1;
 						arg_c_read_shift_register <= 3'b100;
 					end else begin
@@ -344,7 +343,6 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 			commit_id   <= 0;
 			inject_pending_ch0_write <= 0;
 		end else if (enable) begin
-			//if (sample_tick) commit_id <= 0;
 			
 			add_pending_write <= 0;
 			inject_pending_ch0_write <= 0;
@@ -356,10 +354,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 						block_latched <= block_in;
 						
 						operation_latched <= operation_in;
-	
-						dest_latched 	 <= dest_in;
-						dest_acc_latched <= dest_acc_in;
-
+						
 						src_a_latched <= src_a_in;
 						src_b_latched <= src_b_in;
 						src_c_latched <= src_c_in;
@@ -372,22 +367,24 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 						arg_b_needed_latched <= arg_b_needed_in;
 						arg_c_needed_latched <= arg_c_needed_in;
 
-						saturate_latched 		<= saturate_in;
-						use_accumulator_latched <= use_accumulator_in;
-						subtract_latched 		<= subtract_in;
-						signedness_latched 		<= signedness_in;
-						shift_latched 	<= shift_in;
-						no_shift_latched 		<= no_shift_in;
+						dest_latched <= dest_in;
 						
-						res_addr_latched <= res_addr_in;
+						saturate_disable_latched 	<= saturate_disable_in;
+						acc_needed_latched			<= acc_needed_in;
+						signedness_latched 			<= signedness_in;
+						shift_latched 				<= shift_in;
+						shift_disable_latched 		<= shift_disable_in;
 						
-						branch_latched  <= branch;
-						commits_latched <= commits;
+						res_addr_latched 		<= res_addr_in;
+						
+						writes_external_latched <= writes_external_in;
+						writes_channel_latched 	<= writes_channel_in;
+						writes_acc_latched 		<= writes_acc_in;
+						commit_flag_latched 	<= commit_flag_in;
+						branch_latched 			<= branch;
 						
 						if (block_in == 0)
 							inject_pending_ch0_write <= 1;
-						
-						ext_write_latched <= ext_write_in;
 						
 						state <= BUSY;
 					end
@@ -398,31 +395,24 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 						operation_out <= operation_latched;
 		
 						dest_out <= dest_latched;
-						dest_acc_out <= dest_acc_latched;
 
-						arg_a_out <= arg_a_latched;
-						arg_b_out <= arg_b_latched;
-						arg_c_out <= arg_c_latched;
-
-						accumulator_out <= accumulator_in;
-
-						saturate_out 		<= saturate_latched;
-						use_accumulator_out <= use_accumulator_latched;
-						subtract_out 		<= subtract_latched;
-						signedness_out 		<= signedness_latched;
-
-						shift_out <= shift_latched;
-						no_shift_out 	<= no_shift_latched;
-						
-						res_addr_out <= res_addr_latched;
+						block_out 			 <= block_latched;
+						arg_a_out 			 <= arg_a_latched;
+						arg_b_out 			 <= arg_b_latched;
+						arg_c_out 			 <= arg_c_latched;
+						saturate_disable_out <= saturate_disable_latched;
+						signedness_out 		 <= signedness_latched;
+						shift_out 			 <= shift_latched;
+						shift_disable_out 	 <= shift_disable_latched;
+						res_addr_out 		 <= res_addr_latched;
+						writes_external_out  <= writes_external_latched;
+						commit_flag_out		 <= commit_flag_latched;
 						
 						out_valid[branch_latched] <= 1;
 						
-						ext_write_out <= ext_write_latched;
+						accumulator_out <= accumulator_in;
 						
-						block_out <= block_latched;
-						
-						if (commits_latched) begin
+						if (writes_channel_latched | writes_acc_latched) begin
 							commit_id_out <= commit_id;
 							commit_id <= commit_id + 1;
 							

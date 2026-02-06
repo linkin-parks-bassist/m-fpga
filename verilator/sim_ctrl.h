@@ -1,33 +1,46 @@
 #ifndef M_EFFECT_H_
 #define M_EFFECT_H_
 
-#define BLOCK_INSTR_NOP 		0
-#define BLOCK_INSTR_ADD 		1
-#define BLOCK_INSTR_SUB 		2
-#define BLOCK_INSTR_LSH 		3
-#define BLOCK_INSTR_RSH 		4
-#define BLOCK_INSTR_ARSH 		5
-#define BLOCK_INSTR_MUL 		6
-#define BLOCK_INSTR_MADD		7
-#define BLOCK_INSTR_ABS			8
-#define BLOCK_INSTR_LUT			9
-#define BLOCK_INSTR_ENVD 		10
-#define BLOCK_INSTR_DELAY_READ 	11
-#define BLOCK_INSTR_DELAY_WRITE 12
-#define BLOCK_INSTR_SAVE 		13
-#define BLOCK_INSTR_LOAD		14
-#define BLOCK_INSTR_MOV			15
-#define BLOCK_INSTR_CLAMP		16
-#define BLOCK_INSTR_MACZ		17
-#define BLOCK_INSTR_MAC			18
-#define BLOCK_INSTR_MOV_ACC		19
-#define BLOCK_INSTR_LINTERP		20
-#define BLOCK_INSTR_FRAC_DELAY	21
-#define BLOCK_INSTR_LOAD_ACC	22
-#define BLOCK_INSTR_SAVE_ACC	23
-#define BLOCK_INSTR_ACC			24
-#define BLOCK_INSTR_CLEAR_ACC	25
-#define BLOCK_INSTR_MOV_UACC	26
+// Do nothing. This doesn't even use a branch;
+// it isn't passed on from the instruction
+// fetch/decode stage
+#define BLOCK_INSTR_NOP 			0
+
+// Regular arithmetic writing to channels.
+// Uses main branch
+#define BLOCK_INSTR_MADD			1
+#define BLOCK_INSTR_ARSH 			2
+
+// Single stage math operations/moves, writing
+// to channels. Uses MISC branch
+#define BLOCK_INSTR_LSH 			3
+#define BLOCK_INSTR_RSH 			4
+#define BLOCK_INSTR_ABS				5
+#define BLOCK_INSTR_CLAMP			6
+#define BLOCK_INSTR_MOV_ACC			7
+#define BLOCK_INSTR_MOV_LACC		8
+#define BLOCK_INSTR_MOV_UACC		9
+
+// Accumulator MAC instructions. Uses MAC branch
+// _MAC_: acc = a * b + acc
+// _MACZ: acc = a * b + 0
+// UMAC_: a and b are treated as unsigned
+//
+// MAC branch is specialised as it does not
+// wait on the accumulator as a dependency
+// the addition is done in the commit stage
+// therefore is it much faster!
+#define BLOCK_INSTR_MACZ			10
+#define BLOCK_INSTR_UMACZ			11
+#define BLOCK_INSTR_MAC				12
+#define BLOCK_INSTR_UMAC			13
+
+// Interfacing with #resources'. Each has its own branch
+#define BLOCK_INSTR_LUT_READ		14
+#define BLOCK_INSTR_DELAY_READ 		15
+#define BLOCK_INSTR_DELAY_WRITE 	16
+#define BLOCK_INSTR_MEM_READ 		17
+#define BLOCK_INSTR_MEM_WRITE		18
 
 #define NO_SHIFT 255
 
@@ -87,47 +100,32 @@ m_dsp_block_instr m_dsp_block_instr_type_a_str(int opcode, int src_a, int src_a_
 m_dsp_block_instr m_dsp_block_instr_type_b_str(int opcode, int src_a, int src_a_reg, int src_b, int src_b_reg, int dest, int res_addr);
 
 m_dsp_block_instr m_dsp_block_instr_nop();
-m_dsp_block_instr m_dsp_block_instr_add(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_add_unsat(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_sub(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_sub_unsat(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_lsh(int src_a, int src_a_reg, int shift, int dest);
-m_dsp_block_instr m_dsp_block_instr_rsh(int src_a, int src_a_reg, int shift, int dest);
-m_dsp_block_instr m_dsp_block_instr_arsh(int src_a, int src_a_reg, int shift, int dest);
-m_dsp_block_instr m_dsp_block_instr_mul(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest, int shift);
-m_dsp_block_instr m_dsp_block_instr_mul_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_mul_unsat(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_mul_unsat_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
 m_dsp_block_instr m_dsp_block_instr_madd(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest, int shift);
 m_dsp_block_instr m_dsp_block_instr_madd_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest);
 m_dsp_block_instr m_dsp_block_instr_madd_unsat(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest, int shift);
 m_dsp_block_instr m_dsp_block_instr_madd_unsat_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_abs(int src_a, int src_a_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_lut(int src_a, int src_a_reg, int lut, int dest);
-m_dsp_block_instr m_dsp_block_instr_delay_read(int buffer, int dest);
-m_dsp_block_instr m_dsp_block_instr_delay_write(int src, int src_reg, int inc, int inc_reg, int buffer);
-m_dsp_block_instr m_dsp_block_instr_save(int src, int src_reg, int addr);
-m_dsp_block_instr m_dsp_block_instr_load(int addr, int dest);
-m_dsp_block_instr m_dsp_block_instr_mov(int src, int src_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_clamp(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest);
 m_dsp_block_instr m_dsp_block_instr_macz(int src_a, int src_a_reg, int src_b, int src_b_reg, int shift);
 m_dsp_block_instr m_dsp_block_instr_macz_unsat(int src_a, int src_a_reg, int src_b, int src_b_reg, int shift);
 m_dsp_block_instr m_dsp_block_instr_macz_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg);
-m_dsp_block_instr m_dsp_block_instr_macz_unsat_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg);
+m_dsp_block_instr m_dsp_block_instr_macz_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg);
 m_dsp_block_instr m_dsp_block_instr_mac(int src_a, int src_a_reg, int src_b, int src_b_reg, int shift);
 m_dsp_block_instr m_dsp_block_instr_mac_unsat(int src_a, int src_a_reg, int src_b, int src_b_reg);
 m_dsp_block_instr m_dsp_block_instr_mac_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg);
-m_dsp_block_instr m_dsp_block_instr_mac_unsat_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg);
+m_dsp_block_instr m_dsp_block_instr_mac_noshift(int src_a, int src_a_reg, int src_b, int src_b_reg);
 m_dsp_block_instr m_dsp_block_instr_mov_acc(int dest);
-m_dsp_block_instr m_dsp_block_instr_mov_acc_unsat(int dest);
-m_dsp_block_instr m_dsp_block_instr_linterp(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_frac_delay(int buffer, int dest);
-m_dsp_block_instr m_dsp_block_instr_load_acc(int addr);
-m_dsp_block_instr m_dsp_block_instr_save_acc(int addr);
-m_dsp_block_instr m_dsp_block_instr_acc(int src_a, int src_a_reg);
-m_dsp_block_instr m_dsp_block_instr_accu(int src_a, int src_a_reg);
-m_dsp_block_instr m_dsp_block_instr_clear_acc();
 m_dsp_block_instr m_dsp_block_instr_mov_uacc(int dest);
+m_dsp_block_instr m_dsp_block_instr_mov_lacc(int dest);
+
+m_dsp_block_instr m_dsp_block_instr_lsh(int src_a, int src_a_reg, int shift, int dest);
+m_dsp_block_instr m_dsp_block_instr_rsh(int src_a, int src_a_reg, int shift, int dest);
+m_dsp_block_instr m_dsp_block_instr_arsh(int src_a, int src_a_reg, int shift, int dest);
+m_dsp_block_instr m_dsp_block_instr_abs(int src_a, int src_a_reg, int dest);
+m_dsp_block_instr m_dsp_block_instr_clamp(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest);
+m_dsp_block_instr m_dsp_block_instr_lut_read(int src_a, int src_a_reg, int lut, int dest);
+m_dsp_block_instr m_dsp_block_instr_delay_read(int buffer, int dest);
+m_dsp_block_instr m_dsp_block_instr_delay_write(int src, int src_reg, int inc, int inc_reg, int buffer);
+m_dsp_block_instr m_dsp_block_instr_mem_write(int src, int src_reg, int addr);
+m_dsp_block_instr m_dsp_block_instr_mem_read(int addr, int dest);
 
 typedef struct
 {
