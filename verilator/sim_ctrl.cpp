@@ -144,9 +144,14 @@ m_dsp_block_instr m_dsp_block_instr_abs(int src_a, int src_a_reg, int dest)
 	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_ABS, src_a, src_a_reg, 0, 0, 0, 0, dest, 0, 0);
 }
 
-m_dsp_block_instr m_dsp_block_instr_clamp(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest)
+m_dsp_block_instr m_dsp_block_instr_min(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest)
 {
-	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_CLAMP, src_a, src_a_reg, src_b, src_b_reg, src_c, src_c_reg, dest, 0, 0);
+	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_MIN, src_a, src_a_reg, src_b, src_b_reg, 0, 0, dest, 0, 0);
+}
+
+m_dsp_block_instr m_dsp_block_instr_max(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest)
+{
+	return m_dsp_block_instr_type_a_str(BLOCK_INSTR_MAX, src_a, src_a_reg, src_b, src_b_reg, 0, 0, dest, 0, 0);
 }
 
 m_dsp_block_instr m_dsp_block_instr_lut_read(int src_a, int src_a_reg, int lut, int dest)
@@ -1470,7 +1475,8 @@ char *m_dsp_block_opcode_to_string(uint32_t opcode)
 		case BLOCK_INSTR_DELAY_WRITE: 	return (char*)"BLOCK_INSTR_DELAY_WRITE";
 		case BLOCK_INSTR_MEM_WRITE:		return (char*)"BLOCK_INSTR_MEM_WRITE";
 		case BLOCK_INSTR_MEM_READ:		return (char*)"BLOCK_INSTR_MEM_READ";
-		case BLOCK_INSTR_CLAMP: 		return (char*)"BLOCK_INSTR_CLAMP";
+		case BLOCK_INSTR_MIN: 			return (char*)"BLOCK_INSTR_MIN";
+		case BLOCK_INSTR_MAX: 			return (char*)"BLOCK_INSTR_MAX";
 		case BLOCK_INSTR_MACZ: 			return (char*)"BLOCK_INSTR_MACZ";
 		case BLOCK_INSTR_MAC: 			return (char*)"BLOCK_INSTR_MAC";
 		case BLOCK_INSTR_MOV_ACC: 		return (char*)"BLOCK_INSTR_MOV_ACC";

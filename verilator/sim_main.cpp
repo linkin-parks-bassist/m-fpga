@@ -820,7 +820,7 @@ int main(int argc, char** argv)
 	m_fpga_transfer_batch batch = m_new_fpga_transfer_batch();
 	m_effect_desc *eff = new_m_effect_desc("_");
 		
-	float a0 =  0.9915240;
+	/*float a0 =  0.9915240;
 	float a1 = -1.9829756;
 	float a2 =  0.9915240;
 	float b0 =  1.9829756;
@@ -846,7 +846,10 @@ int main(int argc, char** argv)
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_write(1, 0, 2)));
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_write(3, 0, 4)));
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mov_acc_sh(12, 0)));
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_write(0, 0, 3)));
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_write(0, 0, 3)));*/
+	
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_max(0, 0, 0, 1, 0)));
+	m_effect_desc_add_register_val_literal(eff, 0, 0, 10024);
 	
 	m_fpga_resource_report local = m_empty_fpga_resource_report();
 	m_fpga_resource_report res = m_empty_fpga_resource_report();

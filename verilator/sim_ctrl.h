@@ -16,10 +16,11 @@
 #define BLOCK_INSTR_LSH 			3
 #define BLOCK_INSTR_RSH 			4
 #define BLOCK_INSTR_ABS				5
-#define BLOCK_INSTR_CLAMP			6
-#define BLOCK_INSTR_MOV_ACC			7
-#define BLOCK_INSTR_MOV_LACC		8
-#define BLOCK_INSTR_MOV_UACC		9
+#define BLOCK_INSTR_MIN				6
+#define BLOCK_INSTR_MAX				7
+#define BLOCK_INSTR_MOV_ACC			8
+#define BLOCK_INSTR_MOV_LACC		9
+#define BLOCK_INSTR_MOV_UACC		10
 
 // Accumulator MAC instructions. Uses MAC branch
 // _MAC_: acc = a * b + acc
@@ -30,17 +31,17 @@
 // wait on the accumulator as a dependency
 // the addition is done in the commit stage
 // therefore is it much faster!
-#define BLOCK_INSTR_MACZ			10
-#define BLOCK_INSTR_UMACZ			11
-#define BLOCK_INSTR_MAC				12
-#define BLOCK_INSTR_UMAC			13
+#define BLOCK_INSTR_MACZ			11
+#define BLOCK_INSTR_UMACZ			12
+#define BLOCK_INSTR_MAC				13
+#define BLOCK_INSTR_UMAC			14
 
 // Interfacing with #resources'. Each has its own branch
-#define BLOCK_INSTR_LUT_READ		14
-#define BLOCK_INSTR_DELAY_READ 		15
-#define BLOCK_INSTR_DELAY_WRITE 	16
-#define BLOCK_INSTR_MEM_READ 		17
-#define BLOCK_INSTR_MEM_WRITE		18
+#define BLOCK_INSTR_LUT_READ		15
+#define BLOCK_INSTR_DELAY_READ 		16
+#define BLOCK_INSTR_DELAY_WRITE 	17
+#define BLOCK_INSTR_MEM_READ 		18
+#define BLOCK_INSTR_MEM_WRITE		19
 
 #define NO_SHIFT 255
 
@@ -121,7 +122,8 @@ m_dsp_block_instr m_dsp_block_instr_lsh(int src_a, int src_a_reg, int shift, int
 m_dsp_block_instr m_dsp_block_instr_rsh(int src_a, int src_a_reg, int shift, int dest);
 m_dsp_block_instr m_dsp_block_instr_arsh(int src_a, int src_a_reg, int shift, int dest);
 m_dsp_block_instr m_dsp_block_instr_abs(int src_a, int src_a_reg, int dest);
-m_dsp_block_instr m_dsp_block_instr_clamp(int src_a, int src_a_reg, int src_b, int src_b_reg, int src_c, int src_c_reg, int dest);
+m_dsp_block_instr m_dsp_block_instr_min(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
+m_dsp_block_instr m_dsp_block_instr_max(int src_a, int src_a_reg, int src_b, int src_b_reg, int dest);
 m_dsp_block_instr m_dsp_block_instr_lut_read(int src_a, int src_a_reg, int lut, int dest);
 m_dsp_block_instr m_dsp_block_instr_delay_read(int buffer, int dest);
 m_dsp_block_instr m_dsp_block_instr_delay_write(int src, int src_reg, int inc, int inc_reg, int buffer);
