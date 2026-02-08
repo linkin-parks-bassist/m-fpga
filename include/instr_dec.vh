@@ -22,6 +22,8 @@
 `define BLOCK_INSTR_MOV_LACC		9
 `define BLOCK_INSTR_MOV_UACC		10
 
+`define N_MISC_OPS 8
+
 // Accumulator MAC instructions. Uses MAC branch
 // _MAC_: acc = a * b + acc
 // _MACZ: acc = a * b + 0

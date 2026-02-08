@@ -74,11 +74,12 @@ module dsp_core #(
 	
 	reg [data_width   - 1 : 0] block_regs [2 * n_blocks - 1 : 0];
 	
-	wire [reg_addr_w + 3 : 0] reg_read_addr;
-	wire [reg_addr_w - 1 : 0] reg_write_addr = {command_block_target, command_reg_target[0]};
-	reg  signed [data_width - 1 : 0] reg_read_val;
-	wire signed [data_width - 1 : 0] reg_write_val = command_reg_write_val;
-	wire reg_write_enable = command_reg_write;
+	reg [block_addr_w - 1 : 0] reg_write_addr;
+	reg signed [2 * data_width - 1 : 0] reg_read_val;
+	reg signed [2 * data_width - 1 : 0] reg_write_val;
+	reg reg_write_enable;
+	reg reg_write_command_reg;
+	reg write_reg_command_issued;
 	
 	reg signed [data_width - 1 : 0] channels [n_channels - 1 : 0];
 	
@@ -133,19 +134,35 @@ module dsp_core #(
 		end
     end
 
-	wire [reg_addr_w - 1 : 0] reg_read_addr_actual = {reg_read_addr[reg_addr_w + 3 : 4], reg_read_addr[0]};
+	wire [block_addr_w - 1 : 0] reg_read_addr = (command_reg_write) ? command_block_target : instr_read_addr;
+	reg  [data_width - 1 : 0] command_reg_write_val_latched;
+	reg invalidate_reg_read;
+	wire signed [data_width - 1 : 0] register_0_read_value = reg_read_val[    data_width - 1 : 0];
+	wire signed [data_width - 1 : 0] register_1_read_value = reg_read_val[2 * data_width - 1 : data_width];
 
     always @(posedge clk) begin
-		if (|reg_read_addr[3:1]) begin
-			case (reg_read_addr[3:0])
-				`POS_ONE_REGISTER_ADDR: reg_read_val <= 1 << (data_width - 2);
-				`NEG_ONE_REGISTER_ADDR: reg_read_val <= 1 << (data_width - 1);
-				default: 				reg_read_val <= 0;
-			endcase
-		end else begin
-			reg_read_val <= block_regs[reg_read_addr_actual];
+		invalidate_reg_read <= 0;
+		write_reg_command_issued <= 0;
+		reg_write_enable <= 0;
+    
+		if (command_reg_write) begin
+			invalidate_reg_read <= 1;
+			command_reg_write_val_latched <= command_reg_write_val;
+			write_reg_command_issued <= 1;
+			reg_write_addr <= command_block_target;
+			reg_write_command_reg <= command_reg_target;
 		end
 		
+		if (write_reg_command_issued) begin
+			if (reg_write_command_reg == 0)
+				reg_write_val <= {register_1_read_value, command_reg_write_val_latched};
+			else
+				reg_write_val <= {command_reg_write_val_latched, register_0_read_value};
+			
+			reg_write_enable <= 1;
+		end
+    
+		reg_read_val <= block_regs[reg_read_addr];
 		
 		if (reg_write_enable)
             block_regs[reg_write_addr] <= reg_write_val;
@@ -183,8 +200,11 @@ module dsp_core #(
 	wire [$clog2(n_blocks) - 1 : 0] instr_read_addr_ifds;
 	wire [31 : 0] 					instr_read_val_ifds = instr_read_val;
 	
+	wire [data_width - 1 : 0] register_0_out_ifds;
+	wire [data_width - 1 : 0] register_1_out_ifds;
+	
 	wire [4 : 0] operation_out_ifds;
-	wire [7 : 0] misc_op_out_ifds;
+	wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out_ifds;
 	
 	wire [3 : 0] src_a_out_ifds;
 	wire [3 : 0] src_b_out_ifds;
@@ -220,6 +240,8 @@ module dsp_core #(
 			.clk(clk),
 			.reset(reset | resetting),
 			.enable(enable),
+			
+			.invalidate_reg_read(invalidate_reg_read),
 		
 			.sample_tick(tick),
 		
@@ -236,6 +258,11 @@ module dsp_core #(
 			
 			.operation_out(operation_out_ifds),
             .misc_op_out(misc_op_out_ifds),
+			
+			.register_0_in(register_0_read_value),
+			.register_1_in(register_1_read_value),
+			.register_0_out(register_0_out_ifds),
+			.register_1_out(register_1_out_ifds),
 			
 			.src_a_out(src_a_out_ifds),
 			.src_b_out(src_b_out_ifds),
@@ -267,34 +294,30 @@ module dsp_core #(
 			.branch_out(branch_out_ifds)
 		);
 	
-	wire [`N_INSTR_BRANCHES - 1 : 0] out_ready_ofs;
-	wire [`N_INSTR_BRANCHES - 1 : 0] out_valid_ofs;
-	
-	assign out_ready_ofs[0] = in_ready_madd;
-	assign out_ready_ofs[1] = in_ready_mac;
-	assign out_ready_ofs[2] = in_ready_misc;
-	assign out_ready_ofs[3] = in_ready_delay;
-	assign out_ready_ofs[4] = in_ready_lut;
-	assign out_ready_ofs[5] = in_ready_mem;
+	wire out_ready_ofs;
+	wire out_valid_ofs;
+
 	
 	wire [$clog2(n_blocks) - 1 : 0] block_out_ofs;
 	wire [4 : 0] operation_out_ofs;
-	wire [7 : 0] misc_op_out_ofs;
+	wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out_ofs;
 	wire [3 : 0] dest_out_ofs;
+	wire signed [data_width - 1 : 0] register_0_out_ofs;
+	wire signed [data_width - 1 : 0] register_1_out_ofs;
 	wire signed [data_width - 1 : 0] arg_a_out_ofs;
 	wire signed [data_width - 1 : 0] arg_b_out_ofs;
 	wire signed [data_width - 1 : 0] arg_c_out_ofs;
 	wire writes_external_out_ofs;
 	wire saturate_disable_out_ofs;
 	wire signedness_out_ofs;
+	wire accumulator_needed_out_ofs;
 	wire [4 : 0] shift_out_ofs;
 	wire shift_disable_out_ofs;
 	wire [7 : 0] res_addr_out_ofs;
 	wire [8:0] commit_id_out_ofs;
 	wire commit_flag_out_ofs;
-	wire signed [2 * data_width - 1 : 0] accumulator_out_ofs;
-	wire [3 : 0] channel_read_addr_ofs;
-	wire [$clog2(n_blocks) + 4 - 1 : 0] reg_read_addr_ofs;
+	
+	wire [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch_out_ofs;
 	
 	operand_fetch_stage #(.data_width(data_width), .n_blocks(n_blocks), .n_block_regs(n_block_regs)) operand_fetch_stage
 		(
@@ -307,7 +330,7 @@ module dsp_core #(
 			.in_ready(out_ready_ifds),
 			
 			.out_valid(out_valid_ofs),
-			.out_ready(out_ready_ofs),
+			.out_ready(in_ready_router),
 			
 			.n_blocks_running(n_blocks_running),
 			
@@ -319,6 +342,11 @@ module dsp_core #(
 
             .misc_op_in(misc_op_out_ifds),
             .misc_op_out(misc_op_out_ofs),
+            
+			.register_0_in(register_0_out_ifds),
+			.register_0_out(register_0_out_ofs),
+			.register_1_in(register_1_out_ifds),
+			.register_1_out(register_1_out_ofs),
 			
 			.dest_in(dest_out_ifds),
 			.dest_out(dest_out_ofs),
@@ -346,6 +374,7 @@ module dsp_core #(
 			.signedness_out(signedness_out_ofs),
 			
 			.accumulator_needed_in(accumulator_needed_out_ifds),
+			.accumulator_needed_out(accumulator_needed_out_ofs),
 
 			.shift_in(shift_out_ifds),
 			.shift_out(shift_out_ofs),
@@ -366,25 +395,112 @@ module dsp_core #(
 			
 			.commit_flag_in(commit_flag_out_ifds),
 			.commit_flag_out(commit_flag_out_ofs),
-			
-			.accumulator_in(accumulator),
-			.accumulator_out(accumulator_out_ofs),
 
-			.branch(branch_out_ifds),
+			.branch_in(branch_out_ifds),
+			.branch_out(branch_out_ofs),
 			
 			.channel_write_addr(channel_write_addr),
 			.channel_write_val(channel_write_val),
 			.channel_write_enable(channel_write_enable),
 			
-			.channel_read_addr(channel_read_addr),
-			.channel_read_val(channel_read_val),
-			
-			.reg_read_addr(reg_read_addr),
-			.reg_read_val(reg_read_val),
-			
 			.accumulator_write_val(accumulator_write_val),
 			.accumulator_write_enable(accumulator_write_enable)
 		);
+	
+	wire in_ready_router;
+	wire [`N_INSTR_BRANCHES - 1 : 0] out_valid_router;
+	wire [`N_INSTR_BRANCHES - 1 : 0] out_ready_router;
+	wire [$clog2(n_blocks)  - 1 : 0] block_out_router;
+	wire [4 : 0] operation_out_router;
+	wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out_router;
+	wire [3 : 0] dest_out_router;
+	wire signed [data_width - 1 : 0] arg_a_out_router;
+	wire signed [data_width - 1 : 0] arg_b_out_router;
+	wire signed [data_width - 1 : 0] arg_c_out_router;
+	wire saturate_disable_out_router;
+	wire signedness_out_router;
+	wire accumulator_needed_out_router;
+	wire writes_external_out_router;
+	wire [4 : 0] shift_out_router;
+	wire shift_disable_out_router;
+	wire [7 : 0] res_addr_out_router;
+	wire [8:0] commit_id_out_router;
+	wire commit_flag_out_router;
+	wire signed [2 * data_width - 1 : 0] accumulator_out_router;
+	
+	assign out_ready_router[0] = in_ready_madd;
+	assign out_ready_router[1] = in_ready_mac;
+	assign out_ready_router[2] = in_ready_misc;
+	assign out_ready_router[3] = in_ready_delay;
+	assign out_ready_router[4] = in_ready_lut;
+	assign out_ready_router[5] = in_ready_mem;
+	
+	branch_router #(.data_width(data_width), .n_blocks(n_blocks)) router
+	(
+		.clk(clk),
+		.reset(reset | resetting),
+		
+		.enable(enable),
+	
+		.sample_tick(tick),
+		
+		.in_valid(out_valid_ofs),
+		.in_ready(in_ready_router),
+		
+		.out_valid(out_valid_router),
+		.out_ready(out_ready_router),
+		
+		.block_in(block_out_ofs),
+		.block_out(block_out_router),
+
+		.operation_in(operation_out_ofs),
+		.operation_out(operation_out_router),
+
+        .misc_op_in(misc_op_out_ofs),
+        .misc_op_out(misc_op_out_router),
+		
+		.dest_in(dest_out_ofs),
+		.dest_out(dest_out_router),
+
+		.arg_a_in(arg_a_out_ofs),
+		.arg_b_in(arg_b_out_ofs),
+		.arg_c_in(arg_c_out_ofs),
+
+		.arg_a_out(arg_a_out_router),
+		.arg_b_out(arg_b_out_router),
+		.arg_c_out(arg_c_out_router),
+		
+		.saturate_disable_in(saturate_disable_out_ofs),
+		.saturate_disable_out(saturate_disable_out_router),
+		
+		.signedness_in(signedness_out_ofs),
+		.signedness_out(signedness_out_router),
+		
+		.writes_external_in(writes_external_out_ofs),
+		.writes_external_out(writes_external_out_router),
+		
+		.accumulator_needed_in(accumulator_needed_out_ofs),
+		.accumulator_needed_out(accumulator_needed_out_router),
+
+		.shift_in(shift_out_ofs),
+		.shift_out(shift_out_router),
+		.shift_disable_in(shift_disable_out_ofs),
+		.shift_disable_out(shift_disable_out_router),
+		
+		.res_addr_in(res_addr_out_ofs),
+		.res_addr_out(res_addr_out_router),
+		
+		.commit_id_in(commit_id_out_ofs),
+		.commit_id_out(commit_id_out_router),
+		
+		.commit_flag_in(commit_flag_out_ofs),
+		.commit_flag_out(commit_flag_out_router),
+		
+		.accumulator_in(accumulator),
+		.accumulator_out(accumulator_out_router),
+		
+		.branch(branch_out_ofs)
+	);
 	
 	wire in_ready_madd;
 
@@ -395,33 +511,33 @@ module dsp_core #(
 			
 			.enable(enable),
 			
-			.in_valid(out_valid_ofs[`INSTR_BRANCH_MADD]),
+			.in_valid(out_valid_router[`INSTR_BRANCH_MADD]),
 			.in_ready(in_ready_madd),
 			
 			.out_valid(out_valid_final_stages[`INSTR_BRANCH_MADD]),
 			.out_ready(in_ready_commit_master[`INSTR_BRANCH_MADD]),
 			
-			.block_in(block_out_ofs),
+			.block_in(block_out_router),
 			.block_out(block_out_final_stages[`INSTR_BRANCH_MADD]),
 			
-			.shift			 (shift_out_ofs),
-			.shift_disable	 (shift_disable_out_ofs),
-			.signedness		 (signedness_out_ofs),
-			.saturate_disable(saturate_disable_out_ofs),
+			.shift			 (shift_out_router),
+			.shift_disable	 (shift_disable_out_router),
+			.signedness		 (signedness_out_router),
+			.saturate_disable(saturate_disable_out_router),
 			
-			.arg_a_in(arg_a_out_ofs),
-			.arg_b_in(arg_b_out_ofs),
-			.arg_c_in(arg_c_out_ofs),
+			.arg_a_in(arg_a_out_router),
+			.arg_b_in(arg_b_out_router),
+			.arg_c_in(arg_c_out_router),
 			
 			.result_out(result_final_stages[`INSTR_BRANCH_MADD]),
 			
-			.dest_in(dest_out_ofs),
+			.dest_in(dest_out_router),
 			.dest_out(dest_final_stages[`INSTR_BRANCH_MADD]),
 			
-			.commit_id_in(commit_id_out_ofs),
+			.commit_id_in(commit_id_out_router),
 			.commit_id_out(commit_id_final_stages[`INSTR_BRANCH_MADD]),
 			
-			.commit_flag_in(commit_flag_out_ofs),
+			.commit_flag_in(commit_flag_out_router),
 			.commit_flag_out(commit_flag_final_stages[`INSTR_BRANCH_MADD])
 		);
 
@@ -434,33 +550,33 @@ module dsp_core #(
 			
 			.enable(enable),
 			
-			.in_valid(out_valid_ofs[`INSTR_BRANCH_MAC]),
+			.in_valid(out_valid_router[`INSTR_BRANCH_MAC]),
 			.in_ready(in_ready_mac),
 			
 			.out_valid(out_valid_final_stages[`INSTR_BRANCH_MAC]),
 			.out_ready(in_ready_commit_master[`INSTR_BRANCH_MAC]),
 			
-			.block_in(block_out_ofs),
+			.block_in(block_out_router),
 			.block_out(block_out_final_stages[`INSTR_BRANCH_MAC]),
 			
-			.shift				(shift_out_ofs),
-			.shift_disable		(shift_disable_out_ofs),
-			.signedness_in		(signedness_out_ofs),
-			.saturate_disable_in(saturate_disable_out_ofs),
+			.shift				(shift_out_router),
+			.shift_disable		(shift_disable_out_router),
+			.signedness_in		(signedness_out_router),
+			.saturate_disable_in(saturate_disable_out_router),
 			
-			.arg_a_in(arg_a_out_ofs),
-			.arg_b_in(arg_b_out_ofs),
-			.arg_c_in(arg_c_out_ofs),
+			.arg_a_in(arg_a_out_router),
+			.arg_b_in(arg_b_out_router),
+			.arg_c_in(arg_c_out_router),
 			
 			.result_out(result_final_stages[`INSTR_BRANCH_MAC]),
 			
-			.dest_in(dest_out_ofs),
+			.dest_in(dest_out_router),
 			.dest_out(dest_final_stages[`INSTR_BRANCH_MAC]),
 			
-			.commit_id_in(commit_id_out_ofs),
+			.commit_id_in(commit_id_out_router),
 			.commit_id_out(commit_id_final_stages[`INSTR_BRANCH_MAC]),
 			
-			.commit_flag_in(commit_flag_out_ofs),
+			.commit_flag_in(commit_flag_out_router),
 			.commit_flag_out(commit_flag_final_stages[`INSTR_BRANCH_MAC])
 		);
 	
@@ -473,36 +589,36 @@ module dsp_core #(
 			
 			.enable(enable),
 					
-			.in_valid(out_valid_ofs[`INSTR_BRANCH_MISC]),
+			.in_valid(out_valid_router[`INSTR_BRANCH_MISC]),
 			.in_ready(in_ready_misc),
 			
 			.out_valid(out_valid_final_stages[`INSTR_BRANCH_MISC]),
 			.out_ready(in_ready_commit_master[`INSTR_BRANCH_MISC]),
 			
-			.block_in(block_out_ofs),
+			.block_in(block_out_router),
 			.block_out(block_out_final_stages[`INSTR_BRANCH_MISC]),
 			
-			.arg_a_in(arg_a_out_ofs),
-			.arg_b_in(arg_b_out_ofs),
-			.arg_c_in(arg_c_out_ofs),
+			.arg_a_in(arg_a_out_router),
+			.arg_b_in(arg_b_out_router),
+			.arg_c_in(arg_c_out_router),
 			
-			.accumulator_in(accumulator_out_ofs),
+			.accumulator_in(accumulator_out_router),
 			
-			.operation_in(operation_out_ofs),
-			.misc_op_in(misc_op_out_ofs),
+			.operation_in(operation_out_router),
+			.misc_op_in(misc_op_out_router),
 			
-			.saturate_disable_in(saturate_disable_out_ofs),
-			.shift_in(shift_out_ofs),
+			.saturate_disable_in(saturate_disable_out_router),
+			.shift_in(shift_out_router),
 			
 			.result_out(result_final_stages[`INSTR_BRANCH_MISC]),
 			
-			.dest_in(dest_out_ofs),
+			.dest_in(dest_out_router),
 			.dest_out(dest_final_stages[`INSTR_BRANCH_MISC]),
 			
-			.commit_id_in(commit_id_out_ofs),
+			.commit_id_in(commit_id_out_router),
 			.commit_id_out(commit_id_final_stages[`INSTR_BRANCH_MISC]),
 			
-			.commit_flag_in(commit_flag_out_ofs),
+			.commit_flag_in(commit_flag_out_router),
 			.commit_flag_out(commit_flag_final_stages[`INSTR_BRANCH_MISC])
 		);
 
@@ -520,27 +636,27 @@ module dsp_core #(
 			
 			.enable(enable),
 			
-			.in_valid(out_valid_ofs[`INSTR_BRANCH_DELAY]),
+			.in_valid(out_valid_router[`INSTR_BRANCH_DELAY]),
 			.in_ready(in_ready_delay),
 			
 			.out_valid(out_valid_final_stages[`INSTR_BRANCH_DELAY]),
 			.out_ready(in_ready_commit_master[`INSTR_BRANCH_DELAY]),
 			
-			.block_in(block_out_ofs),
+			.block_in(block_out_router),
 			.block_out(block_out_final_stages[`INSTR_BRANCH_DELAY]),
 			
-			.write(writes_external_out_ofs),
+			.write(writes_external_out_router),
 			
-			.handle_in(res_addr_out_ofs),
+			.handle_in(res_addr_out_router),
 			.handle_out(delay_req_handle),
 			
-			.arg_a_in(arg_a_out_ofs),
+			.arg_a_in(arg_a_out_router),
 			.arg_a_out(delay_write_data),
 			
-			.arg_b_in(arg_b_out_ofs),
+			.arg_b_in(arg_b_out_router),
 			.arg_b_out(delay_write_inc),
 			
-			.dest_in(dest_out_ofs),
+			.dest_in(dest_out_router),
 			.dest_out(dest_final_stages[`INSTR_BRANCH_DELAY]),
 			
 			.read_req(delay_read_req),
@@ -552,7 +668,7 @@ module dsp_core #(
 			.data_in(delay_read_data),
 			.result_out(result_final_stages[`INSTR_BRANCH_DELAY]),
 			
-			.commit_id_in (commit_id_out_ofs),
+			.commit_id_in (commit_id_out_router),
 			.commit_id_out(commit_id_final_stages[`INSTR_BRANCH_DELAY])
 		);
 
@@ -568,29 +684,29 @@ module dsp_core #(
 			
 			.enable(enable),
 			
-			.in_valid(out_valid_ofs[`INSTR_BRANCH_LUT]),
+			.in_valid(out_valid_router[`INSTR_BRANCH_LUT]),
 			.in_ready(in_ready_lut),
 			
 			.out_valid(out_valid_final_stages[`INSTR_BRANCH_LUT]),
 			.out_ready(in_ready_commit_master[`INSTR_BRANCH_LUT]),
 			
-			.block_in(block_out_ofs),
+			.block_in(block_out_router),
 			.block_out(block_out_final_stages[`INSTR_BRANCH_LUT]),
 			
 			.write(0),
-			.handle_in(res_addr_out_ofs),
+			.handle_in(res_addr_out_router),
 			.handle_out(lut_handle),
 			
-			.arg_a_in(arg_a_out_ofs),
+			.arg_a_in(arg_a_out_router),
 			.arg_a_out(lut_arg),
 			
-			.arg_b_in(arg_b_out_ofs),
+			.arg_b_in(arg_b_out_router),
 			.arg_b_out(),
 			
 			.read_req(lut_req),
 			.write_req(),
 			
-			.dest_in(dest_out_ofs),
+			.dest_in(dest_out_router),
 			.dest_out(dest_final_stages[`INSTR_BRANCH_LUT]),
 			
 			.read_ready(lut_ready),
@@ -600,7 +716,7 @@ module dsp_core #(
 			
 			.result_out(result_final_stages[`INSTR_BRANCH_LUT]),
 			
-			.commit_id_in(commit_id_out_ofs),
+			.commit_id_in(commit_id_out_router),
 			.commit_id_out(commit_id_final_stages[`INSTR_BRANCH_LUT])
 		);
 
@@ -639,26 +755,26 @@ module dsp_core #(
 			
 			.enable(enable),
 			
-			.in_valid(out_valid_ofs[`INSTR_BRANCH_MEM]),
+			.in_valid(out_valid_router[`INSTR_BRANCH_MEM]),
 			.in_ready(in_ready_mem),
 			
 			.out_valid(out_valid_final_stages[`INSTR_BRANCH_MEM]),
 			.out_ready(in_ready_commit_master[`INSTR_BRANCH_MEM]),
 			
-			.block_in(block_out_ofs),
+			.block_in(block_out_router),
 			.block_out(block_out_final_stages[`INSTR_BRANCH_MEM]),
 			
-			.write(writes_external_out_ofs),
+			.write(writes_external_out_router),
 			
-			.handle_in(res_addr_out_ofs),
+			.handle_in(res_addr_out_router),
 			
-			.arg_a_in(arg_a_out_ofs),
+			.arg_a_in(arg_a_out_router),
 			.arg_a_out(mem_write_val_pl),
 			
-			.arg_b_in(arg_b_out_ofs),
+			.arg_b_in(arg_b_out_router),
 			.arg_b_out(),
 			
-			.dest_in(dest_out_ofs),
+			.dest_in(dest_out_router),
 			.dest_out(dest_final_stages[`INSTR_BRANCH_MEM]),
 			
 			.handle_out(mem_read_addr),
@@ -673,7 +789,7 @@ module dsp_core #(
 			
 			.result_out(result_final_stages[`INSTR_BRANCH_MEM]),
 			
-			.commit_id_in(commit_id_out_ofs),
+			.commit_id_in(commit_id_out_router),
 			.commit_id_out(commit_id_final_stages[`INSTR_BRANCH_MEM])
 		);
 

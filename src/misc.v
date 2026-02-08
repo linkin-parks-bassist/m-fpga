@@ -30,8 +30,8 @@ module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256
 		input wire [8 : 0] operation_in,
 		input wire [4 : 0] operation_out,
 
-        input wire [7 : 0] misc_op_in,
-        output reg [7 : 0] misc_op_out,
+        input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
+        output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
 		
 		input wire saturate_disable_in,
 		input wire [4 : 0] shift_in,
@@ -53,7 +53,6 @@ module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256
 	wire take_in  = in_ready & in_valid;
 	wire take_out = out_valid & out_ready;
 	
-	logic signed [2 * data_width - 1 : 0] result;
 	
 	wire signed [2 * data_width - 1 : 0] acc_shift = accumulator_in >>> shift_in;
 	wire signed [2 * data_width - 1 : 0] upper_acc = {{(data_width){1'b0}}, accumulator_in[2 * data_width - 1 : data_width]};
@@ -67,14 +66,20 @@ module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256
 	wire signed [2 * data_width - 1 : 0] lsh = arg_a_in << shift_in;
 	wire signed [2 * data_width - 1 : 0] rsh = arg_a_in >> shift_in;
 	
-	assign result = (misc_op_in[0] & acc_shift) 
-                  | (misc_op_in[1] & abs)
-                  | (misc_op_in[2] & min)
-                  | (misc_op_in[3] & max)
-                  | (misc_op_in[4] & lsh)
-                  | (misc_op_in[5] & rsh)
-                  | (misc_op_in[6] & upper_acc)
-                  | (misc_op_in[7] & lower_acc);
+	
+	wire signed [2 * data_width - 1 : 0] result;
+	wire signed [2 * data_width - 1 : 0] results [`N_MISC_OPS - 1 : 0];
+	
+	assign results[0] = acc_shift;
+	assign results[1] = abs;
+	assign results[2] = min;
+	assign results[3] = max;
+	assign results[4] = lsh;
+	assign results[5] = rsh;
+	assign results[6] = upper_acc;
+	assign results[7] = lower_acc;
+	
+	assign result = results[misc_op_in];
 
 	always @(posedge clk) begin
 		if (reset) begin
@@ -124,7 +129,7 @@ module misc_branch_stage_2 #(parameter data_width = 16, parameter n_blocks = 256
 		
 		input wire [4 : 0] operation_in,
 
-        input wire [7 : 0] misc_op_in,
+        input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
 		
 		input wire saturate_disable_in,
 		input wire [4 : 0] shift_in,
@@ -191,7 +196,6 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256)
 		input  wire [$clog2(n_blocks) - 1 : 0] block_in,
 		output wire [$clog2(n_blocks) - 1 : 0] block_out,
 		
-        input wire [8 : 0] misc_op_in,
 
 		input wire signed [data_width - 1 : 0] arg_a_in,
 		input wire signed [data_width - 1 : 0] arg_b_in,
@@ -200,6 +204,7 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256)
 		input wire signed [2 * data_width - 1 : 0] accumulator_in,
 		
 		input wire [4 : 0] operation_in,
+        input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
 		
 		input wire saturate_disable_in,
 		input wire [4 : 0] shift_in,
@@ -241,6 +246,8 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256)
 	
 	reg  [4 : 0] operation_latched;
 	wire [4 : 0] operation_1_out;
+	
+	wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_1_out;
 	
 	reg  saturate_disable_latched;
 	wire saturate_disable_1_out;
@@ -285,6 +292,9 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256)
 		
 		.operation_in(operation_latched),
 		.operation_out(operation_1_out),
+		
+		.misc_op_in(misc_op_in),
+		.misc_op_out(misc_op_1_out),
 		
 		.saturate_disable_in(saturate_disable_latched),
 		.shift_in(shift_latched),
@@ -348,6 +358,7 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256)
 		.arg_c_in(arg_c_1_out),
 		
 		.operation_in(operation_1_out),
+		.misc_op_in(misc_op_1_out),
 		
 		.saturate_disable_in(saturate_disable_1_out),
 		.shift_in(shift_1_out),

@@ -13,10 +13,17 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		input wire enable,
 	
 		input wire sample_tick,
+		
+		input wire invalidate_reg_read,
 	
 		input wire [$clog2(n_blocks) - 1 : 0] n_blocks_running,
 		input wire [$clog2(n_blocks) - 1 : 0] last_block,
 		output reg [$clog2(n_blocks) - 1 : 0] instr_read_addr,
+		
+		input wire [data_width - 1 : 0] register_0_in,
+		output reg [data_width - 1 : 0] register_0_out,
+		input wire [data_width - 1 : 0] register_1_in,
+		output reg [data_width - 1 : 0] register_1_out,
 		
 		input wire [31 : 0] instr_read_val,
 		
@@ -56,7 +63,7 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		
 		output reg [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch_out,
 
-        output reg [8 : 0] misc_op_out
+        output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out
 	);
 	
 	reg [31 : 0] current_instr;
@@ -64,8 +71,15 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 	reg current_instr_valid;
 	reg instr_read_valid_next;
 	reg instr_read_valid;
+	reg reg_read_pending;
+	reg reg_read_valid;
+	
+	reg signed [data_width - 1 : 0] current_reg_0;
+	reg signed [data_width - 1 : 0] current_reg_1;
 	
 	wire [4 : 0] operation;
+	
+	wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op;
 	
 	wire [3 : 0] src_a;
 	wire [3 : 0] src_b;
@@ -101,6 +115,8 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		.instr(current_instr),
 		
 		.operation(operation),
+		
+		.misc_op(misc_op),
 		
 		.src_a(src_a),
 		.src_b(src_b),
@@ -144,23 +160,34 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 	
 	always @(posedge clk) begin
 		if (reset) begin
-			out_valid   <= 0;
+			out_valid  <= 0;
 			current_block <= 0;
 			out_valid_next  <= 0;
 			instr_read_addr   <= 0;
+			reg_read_valid     <= 0;
 			instr_read_valid    <= 0;
+			reg_read_pending     <= 1;
 			instr_read_pending    <= 1;
 			current_instr_valid     <= 0;
 			instr_read_valid_next     <= 0;
 		end else if (enable) begin
+			reg_read_pending <= 0;
 			instr_read_pending <= 0;
 			
 			if (n_blocks_running > 0) begin
 				if (out_valid_next)
 					out_valid <= 1;
 				
-				instr_read_valid <= 1;
-				instr_read_pending <= 0;
+				if (reg_read_pending)
+					reg_read_valid <= 1;
+				
+				if (instr_read_pending)
+					instr_read_valid <= 1;
+				
+				if (invalidate_reg_read) begin
+					reg_read_pending <= 1;
+					reg_read_valid <= 0;
+				end
 				
 				if (instr_read_val[4:0] == `BLOCK_INSTR_NOP && !instr_read_pending) begin
 					instr_read_valid <= 0;
@@ -175,6 +202,11 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 					block_out <= current_block;
 				
 					operation_out <= operation;
+					
+					misc_op_out <= misc_op;
+					
+					register_0_out <= current_reg_0;
+					register_1_out <= current_reg_1;
 	
 					src_a_out <= src_a;
 					src_b_out <= src_b;
@@ -208,12 +240,16 @@ module instr_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 					out_valid_next <= 1;
 				end
 				
-				if (current_free && instr_read_valid) begin
+				if (current_free && instr_read_valid && reg_read_valid) begin
 					current_instr <= instr_read_val;
 					current_block <= instr_read_addr;
+					current_reg_0 <= register_0_in;
+					current_reg_1 <= register_1_in;
 					current_instr_valid <= 1;
 					instr_read_valid <= 0;
+					reg_read_valid <= 0;
 					instr_read_pending <= 1;
+					reg_read_pending <= 1;
 					instr_read_addr <= (instr_read_addr == last_block) ? 0 : instr_read_addr + 1;
 				end
 			end
