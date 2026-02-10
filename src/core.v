@@ -1,8 +1,8 @@
-`default_nettype none
-
 `include "instr_dec.vh"
 `include "lut.vh"
 `include "core.vh"
+
+`default_nettype none
 
 
 module dsp_core #(
@@ -68,7 +68,7 @@ module dsp_core #(
 	reg [block_addr_w - 1 : 0] last_block;
 	reg [block_addr_w - 1 : 0] n_blocks_running;
 	
-	wire [block_addr_w - 1 : 0] instr_read_addr  = instr_read_addr_ifds;
+	wire [block_addr_w - 1 : 0] block_read_addr  = block_read_addr_ifds;
 	wire [block_addr_w - 1 : 0] instr_write_addr = (resetting) ? blk_reset_ctr : command_block_target;
 	reg  [31 			   : 0] instr_read_val;
 	wire [31 			   : 0] instr_write_val  = (resetting) ? 0 : command_instr_write_val;
@@ -103,7 +103,7 @@ module dsp_core #(
 			n_blocks_running <= 0;
 		end
 	
-		instr_read_val <= instrs[instr_read_addr];
+		instr_read_val <= instrs[block_read_addr];
 		
 		if (instr_write_enable & ~resetting) begin
             instrs[instr_write_addr] <= instr_write_val;
@@ -161,7 +161,7 @@ module dsp_core #(
 			
 			.n_active_blocks(n_blocks_running),
 			
-			.read_addr(instr_read_addr),
+			.read_addr(block_read_addr),
 			.read_valid(register_read_valid_a),
 			.write_addr(command_block_target),
 			.write_value(command_reg_write_val),
@@ -173,7 +173,7 @@ module dsp_core #(
 			.register_1_out(register_1_read_a),
 			
 			.sync(regfile_sync_a),
-			.sync_addr(instr_read_addr),
+			.sync_addr(block_read_addr),
 			.sync_value(register_read_packed_b),
 			.syncing(regfile_syncing_a)
 		);
@@ -192,7 +192,7 @@ module dsp_core #(
 			
 			.n_active_blocks(n_blocks_running),
 			
-			.read_addr(instr_read_addr),
+			.read_addr(block_read_addr),
 			.read_valid(register_read_valid_b),
 			.write_addr(command_block_target),
 			.write_value(command_reg_write_val),
@@ -204,7 +204,7 @@ module dsp_core #(
 			.register_1_out(register_1_read_b),
 			
 			.sync(regfile_sync_b),
-			.sync_addr(instr_read_addr),
+			.sync_addr(block_read_addr),
 			.sync_value(register_read_packed_a),
 			.syncing(regfile_syncing_b)
 		);
@@ -220,7 +220,7 @@ module dsp_core #(
 	
 	assign regfile_syncing = (active_regfile) ? regfile_syncing_b : regfile_syncing_a;
 
-	wire [block_addr_w - 1 : 0] reg_read_addr = (command_reg_write) ? command_block_target : instr_read_addr;
+	wire [block_addr_w - 1 : 0] reg_read_addr = (command_reg_write) ? command_block_target : block_read_addr;
 	reg  [data_width - 1 : 0] command_reg_write_val_latched;
 	reg invalidate_reg_read;
 	
@@ -284,7 +284,7 @@ module dsp_core #(
 	wire out_valid_ifds;
 	wire [$clog2(n_blocks) - 1 : 0] block_out_ifds;
 	
-	wire [$clog2(n_blocks) - 1 : 0] instr_read_addr_ifds;
+	wire [$clog2(n_blocks) - 1 : 0] block_read_addr_ifds;
 	wire [31 : 0] 					instr_read_val_ifds = instr_read_val;
 	
 	wire [data_width - 1 : 0] register_0_out_ifds;
@@ -322,20 +322,15 @@ module dsp_core #(
 	
 	wire [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch_out_ifds;
 	
-	instr_fetch_decode_stage #(.data_width(data_width), .n_blocks(n_blocks), .n_block_regs(n_block_regs)) instruction_fetch_stage
+	block_fetch_decode_stage #(.data_width(data_width), .n_blocks(n_blocks), .n_block_regs(n_block_regs)) instruction_fetch_stage
 		(
 			.clk(clk),
 			.reset(reset | resetting),
 			.enable(enable),
-			
-			.invalidate_reg_read(invalidate_reg_read),
-		
-			.sample_tick(tick),
 		
 			.n_blocks_running(n_blocks_running),
-			.last_block(last_block),
 			
-			.instr_read_addr(instr_read_addr_ifds),
+			.block_read_addr(block_read_addr_ifds),
 			.instr_read_val(instr_read_val_ifds),
 			
 			.out_valid(out_valid_ifds),
@@ -819,17 +814,17 @@ module dsp_core #(
 	reg  mem_read_req_2;
 	
 	wire mem_write_req;
-	reg  mem_write_ack;
+	wire  mem_write_ack = 1;
 	
 	always @(posedge clk) begin
 		mem_read_req_1 <= 0;
 		mem_read_req_2 <= 0;
-		mem_write_ack  <= 0;
+		//mem_write_ack  <= 0;
 		
 		if (!reset && !full_reset && !resetting) begin
 			mem_read_req_1 <= mem_read_req;
 			mem_read_req_2 <= mem_read_req_1;
-			mem_write_ack  <= mem_write_req;
+			//mem_write_ack  <= mem_write_req;
 		end
 	end
 	
@@ -870,7 +865,7 @@ module dsp_core #(
 			.write_req(mem_write_req),
 			
 			.data_in(mem_read_val),
-			.read_ready(mem_read_req_2),
+			.read_ready(mem_read_req_1),
 			
 			.write_ack(mem_write_ack),
 			

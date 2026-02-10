@@ -776,7 +776,7 @@ m_effect_desc *m_biquad_eff_desc(float a0, float a1, float a2, float b0, float b
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_read(1, 1)));
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_read(2, 2)));
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_read(3, 3)));
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_read(4, 4)));
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_read(4, 4))); //3
 	
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_macz(0, 0, 0, 1, 3)));
 	m_effect_desc_add_register_val_literal(eff, 4, 0, float_to_q_nminus1(a0, 3));
@@ -786,13 +786,13 @@ m_effect_desc *m_biquad_eff_desc(float a0, float a1, float a2, float b0, float b
 	m_effect_desc_add_register_val_literal(eff, 6, 0, float_to_q_nminus1(a2, 3));
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mac(3, 0, 0, 1, 3)));
 	m_effect_desc_add_register_val_literal(eff, 7, 0, float_to_q_nminus1(b0, 3));
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mac(4, 0, 0, 1, 3)));
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mac(4, 0, 0, 1, 3))); //8
 	m_effect_desc_add_register_val_literal(eff, 8, 0, float_to_q_nminus1(b1, 3));
 	
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_write(0, 0, 1)));
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_write(1, 0, 2)));
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_write(3, 0, 4)));
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mov_acc(0)));
+	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mov_acc(0))); //12
 	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_mem_write(0, 0, 3)));
 	
 	return eff;
@@ -849,9 +849,9 @@ int main(int argc, char** argv)
 	m_fpga_transfer_batch batch = m_new_fpga_transfer_batch();
 	m_effect_desc *eff = m_biquad_eff_desc(0.9915240, -1.9829756, 0.9915240, 1.9829756, -0.9830480);
 	
-	m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_clamp(0, 0, 0, 1, 1, 1, 0)));
+	/*m_effect_desc_add_block(eff, new_m_dsp_block_with_instr(m_dsp_block_instr_clamp(0, 0, 0, 1, 1, 1, 0)));
 	m_effect_desc_add_register_val_literal(eff, 14, 0, -256);
-	m_effect_desc_add_register_val_literal(eff, 14, 1, -32768);
+	m_effect_desc_add_register_val_literal(eff, 14, 1, -32768);*/
 	
 	m_fpga_resource_report local = m_empty_fpga_resource_report();
 	m_fpga_resource_report res = m_empty_fpga_resource_report();
@@ -862,7 +862,7 @@ int main(int argc, char** argv)
 	
 	append_send_queue(batch, 128);
 	
-	int16_t new_val = 1024;
+	/*int16_t new_val = 1024;
 	
 	batch = m_new_fpga_transfer_batch();
 	m_fpga_batch_append(&batch, COMMAND_UPDATE_BLOCK_REG);
@@ -958,7 +958,7 @@ int main(int argc, char** argv)
 	m_fpga_batch_append(&batch, (new_val & 0x00FF) >> 0);
 	m_fpga_batch_append(&batch, COMMAND_COMMIT_REG_UPDATES);
 	
-	append_send_queue(batch, 2000);
+	append_send_queue(batch, 2000);*/
 	
 	int samples_to_process = (n_samples < MAX_SAMPLES) ? n_samples : MAX_SAMPLES;
 	

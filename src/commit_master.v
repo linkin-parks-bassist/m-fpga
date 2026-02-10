@@ -15,8 +15,8 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 		input wire signed [data_width - 1 : 0] sample_in,
 		
 		
-		input wire [`N_INSTR_BRANCHES - 1 : 0] in_valid,
-		output reg [`N_INSTR_BRANCHES - 1 : 0] in_ready,
+		input wire   [`N_INSTR_BRANCHES - 1 : 0] in_valid,
+		output logic [`N_INSTR_BRANCHES - 1 : 0] in_ready,
 		
 		input wire [$clog2(n_blocks)  - 1 : 0] block_in		[`N_INSTR_BRANCHES - 1 : 0],
 		input wire [2 * data_width 	  - 1 : 0] result		[`N_INSTR_BRANCHES - 1 : 0],
@@ -38,9 +38,16 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 	bit found;
 	
 	integer i;
+	always @(*) begin
+		in_ready = 0;
+		for (i = 0; i < `N_INSTR_BRANCHES; i = i + 1) begin
+			if (in_valid[i] && commit_id[i] == next_commit_id)
+				in_ready[i] = 1;
+		end
+	end
+	
+	
 	always @(posedge clk) begin	
-		
-		in_ready <= 0;
 		
 		accumulator_add_enable <= 0;
 		accumulator_write_enable <= 0;
@@ -68,7 +75,6 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 					end
 					
 					next_commit_id <= next_commit_id + 1;
-					in_ready[i] <= 1;
 					
 					found = 1;
 				end
