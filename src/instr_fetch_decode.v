@@ -496,8 +496,8 @@ module block_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		
 		.register_0_in(register_0_1_out),
 		.register_0_out(register_0_2_out),
-		.register_1_in(register_0_1_out),
-		.register_1_out(register_0_2_out),
+		.register_1_in(register_1_1_out),
+		.register_1_out(register_1_2_out),
 		
 		.instr_in(instr_1_out),
 		.instr_out(instr_2_out)
