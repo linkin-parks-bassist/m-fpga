@@ -31,6 +31,7 @@
         <File path="src/mixer.v" type="file.verilog" enable="1"/>
         <File path="src/operand_fetch.v" type="file.verilog" enable="1"/>
         <File path="src/pipeline.v" type="file.verilog" enable="1"/>
+        <File path="src/regfile.v" type="file.verilog" enable="1"/>
         <File path="src/rr_arbiter.v" type="file.verilog" enable="1"/>
         <File path="src/spi.v" type="file.verilog" enable="1"/>
         <File path="src/top.v" type="file.verilog" enable="1"/>
