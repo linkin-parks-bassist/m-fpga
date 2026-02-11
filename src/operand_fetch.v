@@ -105,6 +105,9 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 	
 	reg [3 : 0] channels_scoreboard [15 : 0];
 	reg [3 : 0] accumulator_pending_writes;
+	
+	reg [15 : 0] busy_bits;
+	reg accumulator_busy;
 
 	integer i;
 	always @(posedge clk) begin
@@ -118,27 +121,37 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 					channel_write_enable && channel_write_addr == 0})
 				3'b010: begin
 					channels_scoreboard[0] <= channels_scoreboard[0] + 1;
+					busy_bits[0] <= 1;
 				end
 				
 				3'b001: begin
-					if (channels_scoreboard[0] != 0)
+					if (channels_scoreboard[0] != 0) begin
 						channels_scoreboard[0] <= channels_scoreboard[0] - 1;
+						busy_bits[0] <= (channels_scoreboard[0] != 1);
+					end else begin
+						channels_scoreboard[0] <= channels_scoreboard[0];
+						busy_bits[0] <= busy_bits[0];
+					end
 				end
 				
 				3'b100: begin
 					channels_scoreboard[0] <= channels_scoreboard[0] + 1;
+					busy_bits[0] <= 1;
 				end
 				
 				3'b110: begin
 					channels_scoreboard[0] <= channels_scoreboard[0] + 2;
+					busy_bits[0] <= 1;
 				end
 				
 				3'b111: begin
 					channels_scoreboard[0] <= channels_scoreboard[0] + 1;
+					busy_bits[0] <= 1;
 				end
 				
 				default: begin
 					channels_scoreboard[0] <= channels_scoreboard[0];
+					busy_bits[0] <= busy_bits[0];
 				end
 			endcase
 		
@@ -147,15 +160,22 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 						channel_write_enable && channel_write_addr == i})
 					2'b10: begin
 						channels_scoreboard[i] <= channels_scoreboard[i] + 1;
+						busy_bits[i] <= 1;
 					end
 					
 					2'b01: begin
-						if (channels_scoreboard[i] != 0)
+						if (channels_scoreboard[i] != 0) begin
 							channels_scoreboard[i] <= channels_scoreboard[i] - 1;
+							busy_bits[i] <= (channels_scoreboard[0] != 1);
+						end else begin
+							channels_scoreboard[i] <= channels_scoreboard[i];
+							busy_bits[i] <= busy_bits[i];
+						end
 					end
 					
 					default: begin
 						channels_scoreboard[i] <= channels_scoreboard[i];
+						busy_bits[i] <= busy_bits[i];
 					end
 				endcase
 			end
@@ -163,15 +183,22 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 			case ({add_pending_write & writes_accumulator_live, accumulator_write_enable})
 				2'b10: begin
 					accumulator_pending_writes <= accumulator_pending_writes + 1;
+					accumulator_busy <= 1;
 				end
 				
 				2'b01: begin
-					if (accumulator_pending_writes != 0)
+					if (accumulator_pending_writes != 0) begin
 						accumulator_pending_writes <= accumulator_pending_writes - 1;
+						accumulator_busy <= (accumulator_pending_writes != 1);
+					end else begin
+						accumulator_pending_writes <= accumulator_pending_writes;
+						accumulator_busy <= accumulator_busy;
+					end
 				end
 				
 				default: begin
 					accumulator_pending_writes <= accumulator_pending_writes;
+					accumulator_busy <= accumulator_busy;
 				end
 			endcase
 		end
@@ -279,8 +306,8 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 		endcase
 	end
 	
-	wire arg_pending_write = (arg_pending_writes != 0);
-	wire accumulator_stall = last & accumulator_needed_live & (accumulator_pending_writes != 0);
+	wire arg_pending_write = busy_bits[src];
+	wire accumulator_stall = last & accumulator_needed_live & accumulator_busy;
 	wire needs_stall = (arg_needed & ~src_reg & arg_pending_write) | accumulator_stall;
 	wire signed [data_width - 1 : 0] single_cycle_result = src_reg ? reg_value : channels[src];
 	wire stall = ~stall_done & (busy ? 1 : needs_stall);
