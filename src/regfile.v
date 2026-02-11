@@ -24,6 +24,7 @@ module block_regfile #(parameter data_width = 16, parameter n_blocks = 256)
 		output reg syncing
 	);
 	
+    (* ram_style = "block" *)
 	reg [2 * data_width - 1 : 0] registers [n_blocks - 1 : 0];
 	
 	reg [2 * data_width   - 1 : 0] read_back_val;
@@ -46,6 +47,7 @@ module block_regfile #(parameter data_width = 16, parameter n_blocks = 256)
 	assign register_0_out = registers_packed_out[    data_width - 1 :          0];
 	assign register_1_out = registers_packed_out[2 * data_width - 1 : data_width];
 	
+    
 	always @(posedge clk) begin
 		registers_packed_out <= registers[read_addr_int];
 	
