@@ -38,9 +38,16 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 	);
 	
 	always @(posedge clk) begin
-		byte_probe[0] <= |in_valid;
-		byte_probe[1] <= in_valid[0];
-		byte_probe[2:7] <= commit_id[0];
+		if (reset) begin
+			byte_probe <= 0;
+		end else begin
+			byte_probe[0] <= |in_valid | byte_probe[0];
+			byte_probe[1] <= in_valid[0] | in_valid[0];
+			byte_probe[2] <= enable;
+			byte_probe[3] <= |(commit_id[0]) | |(commit_id[1]) | |(commit_id[2]) | |commit_id[3] | byte_probe[3];
+			byte_probe[4] <= commit_id[0][0] | byte_probe[4];
+			byte_probe[5] <= |in_ready | byte_probe[5];
+		end
 	end
 	
     genvar i;
