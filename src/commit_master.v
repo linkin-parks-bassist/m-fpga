@@ -48,16 +48,20 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 	reg [3 					   : 0] dest_prev	[`N_INSTR_BRANCHES - 1 : 0];
 
 	integer j;
+	integer k;
 	always @(posedge clk) begin	
 		
 		accumulator_add_enable <= 0;
 		accumulator_write_enable <= 0;
 		channel_write_enable <= 0;
 		
-		in_ready_prev <= in_ready;
 		acc_overwrite_prev <= commit_flag[`INSTR_BRANCH_MAC];
-		result_prev <= result;
-		dest_prev <= dest;
+		in_ready_prev <= in_ready;
+		
+		for (k = 0; k < `N_INSTR_BRANCHES; k = k + 1) begin
+			result_prev[k] <= result[k];
+			dest_prev[k]   <= dest[k];
+		end
 		
 		if (reset) begin
 			next_commit_id <= 0;
@@ -80,7 +84,7 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 						accumulator_write_enable <= 1;
 						accumulator_add_enable <= ~acc_overwrite_prev;
 					end else begin
-						channel_write_val <= result_prev[j];
+						channel_write_val <= result_prev[j][data_width - 1 : 0];
 						channel_write_addr <= dest_prev[j];
 						channel_write_enable <= 1;
 					end

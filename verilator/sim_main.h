@@ -15,7 +15,7 @@
 #include "math.h"
 
 
-#define MAX_SAMPLES		8192
+#define MAX_SAMPLES		1024
 //#define PRINT_STATE
 //#define RUN_EMULATOR
 
