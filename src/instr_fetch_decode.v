@@ -47,10 +47,12 @@ module block_fetcher #(parameter data_width = 16, parameter n_blocks = 256)
 			block_read_addr <= 0;
 			in_valid <= 0;
 			out_valid <= 0;
+			skid <= 0;
 		end else if (n_blocks_running == 0) begin
 			block_read_addr <= 0;
 			in_valid <= 0;
 			out_valid <= 0;
+			skid <= 0;
 		end else if (enable) begin
 			
 			in_valid <= 0;
