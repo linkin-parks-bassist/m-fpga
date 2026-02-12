@@ -96,7 +96,7 @@ module control_unit
 		set_input_gain  <= 0;
 		set_output_gain <= 0;
 		
-		spi_output <= pipeline_byte_probe[current_pipeline];
+		spi_output <= pipeline_byte_probe[current_pipeline] | (1 << 7);
 		
 		if (reset) begin
 			state <= `CONTROLLER_STATE_READY;
@@ -333,7 +333,7 @@ module control_unit
 				`CONTROLLER_STATE_SWAP_WAIT: begin
 					if (!wait_one && !pipelines_swapping) begin
 						current_pipeline 		<= ~current_pipeline;
-						//pipeline_full_reset[1] 	<= 1;
+						pipeline_full_reset[1] 	<= 1;
 						pipeline_enables[1] 	<= 0;
 						
 						wait_one <= 1;

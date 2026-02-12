@@ -54,8 +54,20 @@ module dsp_core #(
 
         output reg [block_addr_w - 1 : 0] n_blocks_running,
         output reg [31:0] commits_accepted,
-        output wire [7 : 0] byte_probe
+        output reg [7 : 0] byte_probe
 	);
+	
+	always @(posedge clk) begin
+		if (reset | full_reset) begin
+			byte_probe <= 0;
+		end else begin
+			byte_probe[0] <=  out_valid_ifds 		| byte_probe[0];
+			byte_probe[1] <=  out_valid_ods 		| byte_probe[1];
+			byte_probe[2] <= |out_valid_router 		| byte_probe[2];
+			byte_probe[3] <= out_valid_final_stages | byte_probe[3];
+			byte_probe[4] <= instr_write_enable 	| byte_probe[4];
+		end
+	end
 	
 	always @(posedge clk) begin
 		if (tick)
@@ -917,7 +929,7 @@ module dsp_core #(
 			.accumulator_add_enable(accumulator_add_enable),
 			.accumulator_write_enable(accumulator_write_enable),
 			
-			.byte_probe(byte_probe)
+			.byte_probe()
 		);
 	
 	// Sequential reset counters
