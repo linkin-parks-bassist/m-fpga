@@ -232,9 +232,9 @@ module dsp_core #(
 			active_regfile <= 0;
 		end else if (reg_writes_commit) begin
 			if (active_regfile == 0) begin
-				//regfile_sync_a <= 1;
+				regfile_sync_a <= 1;
 			end else if (active_regfile == 1) begin
-				//regfile_sync_b <= 1;
+				regfile_sync_b <= 1;
 			end
 			
 			active_regfile <= ~active_regfile;
@@ -819,7 +819,7 @@ module dsp_core #(
 	resource_branch #(.data_width(data_width), .handle_width(8)) mem_stage
 		(
 			.clk(clk),
-			.reset(reset),
+			.reset(reset | resetting),
 			
 			.enable(enable),
 			
@@ -902,7 +902,7 @@ module dsp_core #(
 	commit_master #(.data_width(data_width), .n_blocks(n_blocks)) commit_master
 		(
 			.clk(clk),
-			.reset(reset),
+			.reset(reset | resetting),
 			
 			.enable(enable),
 			
