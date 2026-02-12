@@ -62,7 +62,7 @@ module dsp_core #(
 			byte_probe <= 0;
 		end else begin
 			byte_probe[0] <=  out_valid_ifds 		| byte_probe[0];
-			byte_probe[1] <=  out_valid_ods 		| byte_probe[1];
+			byte_probe[1] <=  out_valid_ofs 		| byte_probe[1];
 			byte_probe[2] <= |out_valid_router 		| byte_probe[2];
 			byte_probe[3] <= out_valid_final_stages | byte_probe[3];
 			byte_probe[4] <= instr_write_enable 	| byte_probe[4];
