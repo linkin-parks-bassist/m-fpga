@@ -127,25 +127,6 @@ module dsp_core #(
 				channels[channel_write_addr] <= channel_write_val;
 		end
     end
-
-	reg active_regfile;
-	
-	always @(posedge clk) begin
-		regfile_sync_a <= 0;
-		regfile_sync_b <= 0;
-		
-		if (reset) begin
-			active_regfile <= 0;
-		end else if (reg_writes_commit) begin
-			if (active_regfile == 0) begin
-				regfile_sync_a <= 1;
-			end else if (active_regfile == 1) begin
-				regfile_sync_b <= 1;
-			end
-			
-			active_regfile <= ~active_regfile;
-		end
-	end
 	
 	wire register_read_valid_a;
 	wire signed [2 * data_width - 1 : 0] register_read_packed_a;
@@ -209,51 +190,31 @@ module dsp_core #(
 			.syncing(regfile_syncing_b)
 		);
 	
-	reg [2 * data_width - 1 : 0] block_regs [n_blocks - 1 : 0];
-	
-	reg [block_addr_w - 1 : 0] reg_write_addr;
-	reg signed [2 * data_width - 1 : 0] reg_read_val;
-	reg signed [2 * data_width - 1 : 0] reg_write_val;
-	reg reg_write_enable;
-	reg reg_write_command_reg;
-	reg write_reg_command_issued;
-	
 	assign regfile_syncing = (active_regfile) ? regfile_syncing_b : regfile_syncing_a;
 
 	wire [block_addr_w - 1 : 0] reg_read_addr = (command_reg_write) ? command_block_target : block_read_addr;
-	reg  [data_width - 1 : 0] command_reg_write_val_latched;
-	reg invalidate_reg_read;
 	
 	wire signed [data_width - 1 : 0] register_0_read_value = (active_regfile) ? register_0_read_b : register_0_read_a;
 	wire signed [data_width - 1 : 0] register_1_read_value = (active_regfile) ? register_1_read_b : register_1_read_a;
 
-    always @(posedge clk) begin
-		invalidate_reg_read <= 0;
-		write_reg_command_issued <= 0;
-		reg_write_enable <= 0;
-    
-		if (command_reg_write) begin
-			invalidate_reg_read <= 1;
-			command_reg_write_val_latched <= command_reg_write_val;
-			write_reg_command_issued <= 1;
-			reg_write_addr <= command_block_target;
-			reg_write_command_reg <= command_reg_target;
-		end
+	reg active_regfile;
+	
+	always @(posedge clk) begin
+		regfile_sync_a <= 0;
+		regfile_sync_b <= 0;
 		
-		if (write_reg_command_issued) begin
-			if (reg_write_command_reg == 0)
-				reg_write_val <= {register_1_read_value, command_reg_write_val_latched};
-			else
-				reg_write_val <= {command_reg_write_val_latched, register_0_read_value};
+		if (reset) begin
+			active_regfile <= 0;
+		end else if (reg_writes_commit) begin
+			if (active_regfile == 0) begin
+				regfile_sync_a <= 1;
+			end else if (active_regfile == 1) begin
+				regfile_sync_b <= 1;
+			end
 			
-			reg_write_enable <= 1;
+			active_regfile <= ~active_regfile;
 		end
-    
-		reg_read_val <= block_regs[reg_read_addr];
-		
-		if (reg_write_enable)
-            block_regs[reg_write_addr] <= reg_write_val;
-    end
+	end
 
     always @(posedge clk) begin
 		mem_read_val <= mem[mem_read_addr];

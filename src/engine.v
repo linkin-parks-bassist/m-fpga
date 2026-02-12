@@ -261,7 +261,9 @@ module dsp_engine_seq
 			.set_input_gain(set_input_gain),
 			.set_output_gain(set_output_gain),
 			
-			.invalid(invalid_command)
+			.invalid(invalid_command),
+			
+			.spi_output(out)
 		);
 	
     mixer #(.data_width(data_width), .gain_shift(5)) mixerr (

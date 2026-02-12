@@ -281,7 +281,7 @@ module top
             .cs(cs),
             .mosi(mosi),
             .miso(miso),
-            .miso_byte(data_out),
+            .miso_byte(out),
 
             .enable(1),
 

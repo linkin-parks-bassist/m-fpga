@@ -42,7 +42,9 @@ module control_unit
 		
 		output reg next,
 		
-		output reg invalid
+		output reg invalid,
+		
+		output reg spi_output
 	);
 	
 	reg [7:0] in_byte_latched = 0;
@@ -88,6 +90,9 @@ module control_unit
 		
 		set_input_gain  <= 0;
 		set_output_gain <= 0;
+		
+		if (in_valid)
+			out <= in_byte;
 		
 		if (reset) begin
 			state <= `CONTROLLER_STATE_READY;
