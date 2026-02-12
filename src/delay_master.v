@@ -199,6 +199,7 @@ module delay_master
 	
 	localparam addr_width = $clog2(memory_size);
 	
+    (* ram_style = "block" *)
 	reg [data_width - 1 : 0] memory [memory_size - 1 : 0];
 	
 	reg  [addr_width - 1 : 0] mem_write_addr;
