@@ -919,6 +919,7 @@ int main(int argc, char** argv)
 {
 	srand(time(0));
     Verilated::commandArgs(argc, argv);
+    Verilated::randReset(2);
 
     if (argc < 3)
     {
