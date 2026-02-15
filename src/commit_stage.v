@@ -29,15 +29,15 @@ module commit_stage #(parameter data_width = 16, parameter n_blocks = 256)
 	
 	localparam payload_width = $clog2(n_blocks) + 2 * data_width + 4 + 9 + 1;
 
-    wire [payload_width - 1 : 0] skid_payload_in = 
-        {block_in, result_in, dest_in, commit_id_in, commit_flag_in};
-    wire [payload_width - 1 : 0] skid_payload_out;
+	wire [payload_width - 1 : 0] skid_payload_in = 
+		{block_in, result_in, dest_in, commit_id_in, commit_flag_in};
+	wire [payload_width - 1 : 0] skid_payload_out;
 
-    assign {block_out, result_out, dest_out, commit_id_out, commit_flag_out} = skid_payload_out;
+	assign {block_out, result_out, dest_out, commit_id_out, commit_flag_out} = skid_payload_out;
 
-    skid_buffer #(.payload_width(payload_width)) skid_buffer
-        (.clk(clk), .reset(reset), .enable(enable),
-          .in_ready(in_ready),   .in_valid(in_valid),
-         .out_ready(out_ready), .out_valid(out_valid),
-         .payload_in(skid_payload_in), .payload_out(skid_payload_out));
+	skid_buffer #(.payload_width(payload_width)) skid_buffer
+		(.clk(clk), .reset(reset), .enable(enable),
+		  .in_ready(in_ready),   .in_valid(in_valid),
+		 .out_ready(out_ready), .out_valid(out_valid),
+		 .payload_in(skid_payload_in), .payload_out(skid_payload_out));
 endmodule

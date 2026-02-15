@@ -17,8 +17,8 @@ module delay_buffer_controller #(parameter data_width = 16, parameter addr_width
 		
 		input wire init,
 		
-		input wire [    addr_width - 1 : 0] init_addr,
-		input wire [    addr_width - 1 : 0] init_size,
+		input wire [	addr_width - 1 : 0] init_addr,
+		input wire [	addr_width - 1 : 0] init_size,
 		input wire [2 * data_width - 1 : 0] init_delay,
 		
 		output reg mem_read_req,
@@ -53,10 +53,10 @@ module delay_buffer_controller #(parameter data_width = 16, parameter addr_width
 	
 	reg initialised;
 	
-	reg [    addr_width - 1 : 0] addr;
-	reg [    addr_width - 1 : 0] size;
+	reg [	addr_width - 1 : 0] addr;
+	reg [	addr_width - 1 : 0] size;
 	reg [2 * data_width - 1 : 0] delay;
-	reg [    addr_width - 1 : 0] position;
+	reg [	addr_width - 1 : 0] position;
 	
 	reg wrapped;
 	
@@ -68,7 +68,7 @@ module delay_buffer_controller #(parameter data_width = 16, parameter addr_width
 	
 	reg [2 * data_width - 1 : 0] delay_inc_clamped;
 	
-	wire 	    [2 * data_width - 1 : 0] max_delay 	   = (size << DELAY_FORMAT);
+	wire 		[2 * data_width - 1 : 0] max_delay 	   = (size << DELAY_FORMAT);
 	wire signed [2 * data_width - 1 : 0] max_delay_inc = max_delay - delay;
 	wire signed [2 * data_width - 1 : 0] min_delay_inc = -delay;
 	
@@ -116,8 +116,8 @@ module delay_buffer_controller #(parameter data_width = 16, parameter addr_width
 							delay_inc_clamped <= (delay_inc > max_delay_inc)
 											  ? max_delay_inc
 											  : ((delay_inc < min_delay_inc)
-											      ? min_delay_inc
-											      : delay_inc);
+												  ? min_delay_inc
+												  : delay_inc);
 							
 							state <= WRITE_REQ;
 						end
@@ -176,7 +176,7 @@ module delay_master
 		input wire enable,
 		
 		input wire alloc_req,
-		input wire [    addr_width - 1 : 0] alloc_size,
+		input wire [	addr_width - 1 : 0] alloc_size,
 		input wire [2 * addr_width - 1 : 0] alloc_delay,
 		
 		input wire read_req,
@@ -199,7 +199,7 @@ module delay_master
 	
 	localparam addr_width = $clog2(memory_size);
 	
-    (* ram_style = "block" *)
+	(* ram_style = "block" *)
 	reg [data_width - 1 : 0] memory [memory_size - 1 : 0];
 	
 	reg  [addr_width - 1 : 0] mem_write_addr;
@@ -314,7 +314,7 @@ module delay_master
 	wire read_req_valid  = read_handle  < n_buffers_initd;
 	wire write_req_valid = write_handle < n_buffers_initd;
 	
-	reg [    addr_width - 1 : 0] buf_init_size;
+	reg [	addr_width - 1 : 0] buf_init_size;
 	reg [2 * data_width - 1 : 0] buf_init_delay;
 
 	reg [handle_width - 1 : 0] read_handle_latched;
@@ -410,9 +410,9 @@ module delay_master
 						write_dispatched <= 0;
 					end else begin
 						mem_write_addr   <= buf_mem_write_addr[write_handle];
-						mem_write_val    <= buf_mem_data_out  [write_handle];
-						mem_read_addr    <= buf_mem_read_addr [write_handle];
-						mem_read_req     <= buf_mem_read_req  [write_handle];
+						mem_write_val	<= buf_mem_data_out  [write_handle];
+						mem_read_addr	<= buf_mem_read_addr [write_handle];
+						mem_read_req	 <= buf_mem_read_req  [write_handle];
 						mem_write_enable <= buf_mem_write_req [write_handle];
 					end
 				end else begin

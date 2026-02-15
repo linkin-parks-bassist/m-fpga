@@ -27,8 +27,8 @@ module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256
 		input wire [8 : 0] operation_in,
 		input wire [4 : 0] operation_out,
 
-        input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
-        output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
+		input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
+		output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
 		
 		output reg signed [2 * data_width - 1 : 0] acc_shift_out,
 		
@@ -72,10 +72,10 @@ module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256
 	wire signed [2 * data_width - 1 : 0] acc_sh_2 = shift_in[2] ? (acc_sh_1		  >>> 4) : acc_sh_1;
 
 	wire signed [data_width - 1 : 0] lsh_1 = shift_in[3] ? (arg_a_in << 8) : arg_a_in;
-	wire signed [data_width - 1 : 0] lsh_2 = shift_in[2] ? (lsh_1    << 4) : lsh_1;
+	wire signed [data_width - 1 : 0] lsh_2 = shift_in[2] ? (lsh_1	<< 4) : lsh_1;
 
 	wire [data_width - 1 : 0] rsh_1 = shift_in[3] ? (arg_a_in >> 8) : arg_a_in;
-	wire [data_width - 1 : 0] rsh_2 = shift_in[2] ? (rsh_1    >> 4) : rsh_1;
+	wire [data_width - 1 : 0] rsh_2 = shift_in[2] ? (rsh_1	>> 4) : rsh_1;
 
 	wire clamp_swap = (arg_c_in < arg_b_in);
 
@@ -105,14 +105,14 @@ module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256
 			if (take_in) begin
 				out_valid <= 1;
 				
-                misc_op_out <= misc_op_in;
+				misc_op_out <= misc_op_in;
 
 				block_out <= block_in;
 				
 				acc_shift_out <= acc_sh_2;
 				
 				upper_acc_out <= accumulator_in[2 * data_width - 1 : data_width];
-				lower_acc_out <= accumulator_in[    data_width - 1 :     0     ];
+				lower_acc_out <= accumulator_in[	data_width - 1 :	 0	 ];
 
 				abs_out <= (arg_a_in < 0) ? -arg_a_in : arg_a_in;
 
@@ -167,8 +167,8 @@ module misc_branch_stage_2 #(parameter data_width = 16, parameter n_blocks = 256
 		input wire [8 : 0] operation_in,
 		input wire [4 : 0] operation_out,
 
-        input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
-        output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
+		input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
+		output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
 		
 		input wire signed [2 * data_width - 1 : 0] acc_shift_in,
 		output reg signed [2 * data_width - 1 : 0] acc_shift_out,
@@ -222,10 +222,10 @@ module misc_branch_stage_2 #(parameter data_width = 16, parameter n_blocks = 256
 	wire signed [2 * data_width - 1 : 0] acc_sh_2 = shift_in[0] ? (acc_sh_1		  >>> 1) : acc_sh_1;
 
 	wire signed [data_width - 1 : 0] lsh_1 = shift_in[1] ? (arg_a_in << 2) : arg_a_in;
-	wire signed [data_width - 1 : 0] lsh_2 = shift_in[0] ? (lsh_1    << 1) : lsh_1;
+	wire signed [data_width - 1 : 0] lsh_2 = shift_in[0] ? (lsh_1	<< 1) : lsh_1;
 
 	wire [data_width - 1 : 0] rsh_1 = shift_in[1] ? (arg_a_in >> 2) : arg_a_in;
-	wire [data_width - 1 : 0] rsh_2 = shift_in[0] ? (rsh_1    >> 1) : rsh_1;
+	wire [data_width - 1 : 0] rsh_2 = shift_in[0] ? (rsh_1	>> 1) : rsh_1;
 
 	always @(posedge clk) begin
 		if (reset) begin
@@ -251,7 +251,7 @@ module misc_branch_stage_2 #(parameter data_width = 16, parameter n_blocks = 256
 			if (take_in) begin
 				out_valid <= 1;
 				
-                misc_op_out <= misc_op_in;
+				misc_op_out <= misc_op_in;
 
 				block_out <= block_in;
 				
@@ -324,7 +324,7 @@ module misc_branch_stage_3 #(parameter data_width = 16, parameter n_blocks = 256
 		
 		output reg signed [2 * data_width - 1 : 0] result_out,
 
-        input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
+		input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
 		
 		input wire saturate_disable_in,
 		input wire [4 : 0] shift_in,
@@ -349,12 +349,12 @@ module misc_branch_stage_3 #(parameter data_width = 16, parameter n_blocks = 256
 	
 	wire signed [2 * data_width - 1 : 0] results [`N_MISC_OPS - 1 : 0];
 	
-	assign results[`BLOCK_INSTR_LSH      - `MISC_OPCODE_MIN] = lsh_in;
-	assign results[`BLOCK_INSTR_RSH      - `MISC_OPCODE_MIN] = rsh_in;
-	assign results[`BLOCK_INSTR_ABS      - `MISC_OPCODE_MIN] = abs_in;
-	assign results[`BLOCK_INSTR_MIN      - `MISC_OPCODE_MIN] = min_in;
-	assign results[`BLOCK_INSTR_MAX      - `MISC_OPCODE_MIN] = max_in;
-	assign results[`BLOCK_INSTR_CLAMP    - `MISC_OPCODE_MIN] = clamp_in;
+	assign results[`BLOCK_INSTR_LSH	  - `MISC_OPCODE_MIN] = lsh_in;
+	assign results[`BLOCK_INSTR_RSH	  - `MISC_OPCODE_MIN] = rsh_in;
+	assign results[`BLOCK_INSTR_ABS	  - `MISC_OPCODE_MIN] = abs_in;
+	assign results[`BLOCK_INSTR_MIN	  - `MISC_OPCODE_MIN] = min_in;
+	assign results[`BLOCK_INSTR_MAX	  - `MISC_OPCODE_MIN] = max_in;
+	assign results[`BLOCK_INSTR_CLAMP	- `MISC_OPCODE_MIN] = clamp_in;
 	assign results[`BLOCK_INSTR_MOV_ACC  - `MISC_OPCODE_MIN] = acc_shift_in;
 	assign results[`BLOCK_INSTR_MOV_LACC - `MISC_OPCODE_MIN] = upper_acc_in;
 	assign results[`BLOCK_INSTR_MOV_UACC - `MISC_OPCODE_MIN] = lower_acc_in;
@@ -418,7 +418,7 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256)
 		input wire signed [2 * data_width - 1 : 0] accumulator_in,
 		
 		input wire [4 : 0] operation_in,
-        input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
+		input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
 		
 		input wire saturate_disable_in,
 		input wire [4 : 0] shift_in,
@@ -540,7 +540,7 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256)
 	wire signed [2 * data_width - 1 : 0] max_2_out;
 	wire signed [2 * data_width - 1 : 0] lsh_2_out;
 	wire signed [2 * data_width - 1 : 0] rsh_2_out;
-	wire signed [    data_width - 1 : 0] clamp_2_out;
+	wire signed [	data_width - 1 : 0] clamp_2_out;
 	wire saturate_disable_2_out;
 	wire shift_disable_2_out;
 	wire [4 : 0] shift_2_out;

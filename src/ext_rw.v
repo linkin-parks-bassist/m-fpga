@@ -1,11 +1,8 @@
 `include "instr_dec.vh"
-
 `include "lut.vh"
 `include "core.vh"
 
-
-module resource_branch #(parameter data_width = 16, parameter handle_width = 8, parameter n_blocks = 256)
-	(
+module resource_branch #(parameter data_width = 16, parameter handle_width = 8, parameter n_blocks = 256) (
 		input wire clk,
 		input wire reset,
 		

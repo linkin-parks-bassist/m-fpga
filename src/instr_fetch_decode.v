@@ -77,10 +77,10 @@ module block_fetcher #(parameter data_width = 16, parameter n_blocks = 256)
 			if (in_valid) begin
 				if (out_valid & ~out_ready) begin // Record skid, freeze frame
 					// Yup, that's me. I bet you're wondering how I ended up in this situation
-					instr_skid 	    <= instr_in;
+					instr_skid 		<= instr_in;
 					register_0_skid <= register_0_in;
 					register_1_skid <= register_1_in;
-					block_skid 	    <= block_r;
+					block_skid 		<= block_r;
 					skid <= 1;
 				end else begin
 					instr_out 	   <= instr_in;
@@ -255,7 +255,7 @@ module instr_decode_stage #(parameter data_width = 16, parameter n_blocks = 256)
 		
 		output reg [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch_out,
 
-        output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out
+		output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out
 	);
 	
 	assign in_ready = ~out_valid | out_ready;
@@ -387,7 +387,7 @@ module instr_decode_stage #(parameter data_width = 16, parameter n_blocks = 256)
 endmodule
 
 
-module block_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter n_block_regs = 2)
+module block_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks = 256)
 	(
 		input  wire clk,
 		input  wire reset,
@@ -440,7 +440,7 @@ module block_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		
 		output wire [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch_out,
 
-        output wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out
+		output wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out
 	);
 	
 	wire out_valid_1;
@@ -561,7 +561,7 @@ module block_fetch_decode_stage #(parameter data_width = 16, parameter n_blocks 
 		
 		.branch_out(branch_out),
 
-        .misc_op_out(misc_op_out)
+		.misc_op_out(misc_op_out)
 	);
 	
 endmodule

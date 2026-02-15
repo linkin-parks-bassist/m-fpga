@@ -113,19 +113,19 @@ module rr_arbiter_handle
 		input wire server_ready
 	);
 
-    wire [req_data_width-1:0] req_data     [0:n_clients-1];
-    wire [handle_width-1:0]   req_handles  [0:n_clients-1];
+	wire [req_data_width-1:0] req_data	 [0:n_clients-1];
+	wire [handle_width-1:0]   req_handles  [0:n_clients-1];
 
-    genvar i;
-    generate
-        for (i = 0; i < n_clients; i = i + 1) begin : UNFLATTEN
-            assign req_data[i] =
-                req_data_flat[i * req_data_width +: req_data_width];
+	genvar i;
+	generate
+		for (i = 0; i < n_clients; i = i + 1) begin : UNFLATTEN
+			assign req_data[i] =
+				req_data_flat[i * req_data_width +: req_data_width];
 
-            assign req_handles[i] =
-                req_handles_flat[i * handle_width +: handle_width];
-        end
-    endgenerate
+			assign req_handles[i] =
+				req_handles_flat[i * handle_width +: handle_width];
+		end
+	endgenerate
 
 
 	localparam client_id_width = $clog2(n_clients);

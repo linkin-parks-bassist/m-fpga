@@ -3,7 +3,7 @@
 
 module instr_decoder #(parameter data_width = 16)
 	(
-        input wire clk,
+		input wire clk,
 
 		input  wire [31 : 0] instr,
 		
@@ -38,7 +38,7 @@ module instr_decoder #(parameter data_width = 16)
 		
 		output logic [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch,
 
-        output logic [$clog2(`N_MISC_OPS) - 1 : 0] misc_op
+		output logic [$clog2(`N_MISC_OPS) - 1 : 0] misc_op
 	);
 	
 	wire   instr_format 	  = instr[5];
@@ -46,13 +46,13 @@ module instr_decoder #(parameter data_width = 16)
 	assign operation 		  = instr[4  :  0];
 	assign {src_a_reg, src_a} = instr[10 :  6];
 	assign {src_b_reg, src_b} = instr[15 : 11];
-	assign shift_disable  	  = instr[     31];
+	assign shift_disable  	  = instr[	 31];
 	
 	assign {src_c_reg, src_c} = (instr_format) ? 		5'b0  : instr[20:16];
 	assign dest 			  = (instr_format) ? instr[19:16] : instr[24:21];
 	assign shift			  = (instr_format) ? 		5'b0  : instr[29:25];
 	assign saturate_disable   = (instr_format) ? 		   0  : instr[30];
-	assign res_addr		      = (instr_format) ? instr[31:20] : 12'b0;
+	assign res_addr			  = (instr_format) ? instr[31:20] : 12'b0;
 	
 	assign arg_a_needed = (operation == `BLOCK_INSTR_MADD
 						|| operation == `BLOCK_INSTR_ARSH
@@ -89,7 +89,7 @@ module instr_decoder #(parameter data_width = 16)
 	assign signedness = (operation != `BLOCK_INSTR_UMACZ);
 	
 	always_comb begin
-		if      (operation == `BLOCK_INSTR_DELAY_READ || operation == `BLOCK_INSTR_DELAY_WRITE) branch = `INSTR_BRANCH_DELAY;
+		if	  (operation == `BLOCK_INSTR_DELAY_READ || operation == `BLOCK_INSTR_DELAY_WRITE) branch = `INSTR_BRANCH_DELAY;
 		else if (operation == `BLOCK_INSTR_LUT_READ) 											branch = `INSTR_BRANCH_LUT;
 		else if (operation == `BLOCK_INSTR_MEM_WRITE  || operation == `BLOCK_INSTR_MEM_READ) 	branch = `INSTR_BRANCH_MEM;
 		else if (operation == `BLOCK_INSTR_MACZ 	  || operation == `BLOCK_INSTR_UMACZ
@@ -97,8 +97,8 @@ module instr_decoder #(parameter data_width = 16)
 		else if (operation == `BLOCK_INSTR_LSH 		  || operation == `BLOCK_INSTR_RSH
 			  || operation == `BLOCK_INSTR_ABS 		  || operation == `BLOCK_INSTR_MIN
 			  || operation == `BLOCK_INSTR_MAX 		  || operation == `BLOCK_INSTR_CLAMP
-              || operation == `BLOCK_INSTR_MOV_ACC    || operation == `BLOCK_INSTR_MOV_LACC
-              || operation == `BLOCK_INSTR_MOV_UACC)         									branch = `INSTR_BRANCH_MISC;
+			  || operation == `BLOCK_INSTR_MOV_ACC	|| operation == `BLOCK_INSTR_MOV_LACC
+			  || operation == `BLOCK_INSTR_MOV_UACC)		 									branch = `INSTR_BRANCH_MISC;
 		else
 			branch = `INSTR_BRANCH_MADD;
 	end

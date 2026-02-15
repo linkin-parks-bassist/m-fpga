@@ -24,8 +24,8 @@ module branch_router #(parameter data_width = 16, parameter n_blocks = 256, para
 		input wire [4 : 0] operation_in,
 		output reg [4 : 0] operation_out,
 
-        input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
-        output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
+		input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
+		output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
 		
 		input wire [3 : 0] dest_in,
 		output reg [3 : 0] dest_out,

@@ -6,14 +6,10 @@
 `define PIPELINE_PROCESSING 	1
 `define PIPELINE_INVALID	 	2
 
-module dsp_pipeline
-	#(
+module dsp_pipeline #(
 		parameter data_width 		= 16,
-		parameter n_blocks 			= 256,
-		parameter n_block_registers = 2,
-		parameter n_channels 		= 16
-	)
-	(
+		parameter n_blocks 			= 256
+	) (
 		input wire clk,
 		input wire reset,
 		
@@ -42,17 +38,120 @@ module dsp_pipeline
 		input wire reg_writes_commit,
 		
 		output wire reg_write_ack,
-        output wire instr_write_ack,
+		output wire instr_write_ack,
 	
 		input wire alloc_delay,
 		output wire resetting,
 
-        output wire[7:0] out,
+		output wire[7:0] out,
 
-        output wire [$clog2(n_blocks) - 1 : 0] n_blocks_running,
-        output wire [31:0] commits_accepted,
-        output wire [7 : 0] byte_probe
+		output wire [$clog2(n_blocks) - 1 : 0] n_blocks_running,
+		output wire [31:0] commits_accepted,
+		output wire [7 : 0] byte_probe
 	);
+	
+	/*******************/
+	/* Processing core */
+	/*******************/
+	
+	dsp_core #(
+		.data_width(data_width),
+		.n_blocks(n_blocks)
+	) core (
+		.clk(clk),
+		.reset(reset),
+		
+		.enable(enable),
+		
+		.tick(in_valid),
+		
+		.sample_in(in_sample),
+		.sample_out(out_sample),
+		
+		.ready(core_ready),
+		
+		.command_reg_write(reg_write),
+		.command_instr_write(instr_write),
+		
+		.command_instr_write_val(instr_val),
+		
+		.command_block_target(block_target),
+		.command_reg_target(reg_target),
+		.command_reg_write_val(ctrl_data),
+		
+		.lut_req(lut_req),
+		.lut_handle(lut_req_handle),
+		.lut_arg(lut_req_arg),
+		.lut_data(lut_data),
+		.lut_valid(lut_valid),
+		
+		.delay_read_req  (delay_read_req),
+		.delay_write_req (delay_write_req),
+		.delay_req_handle(delay_req_handle),
+		.delay_write_data(delay_write_data),
+		.delay_write_inc (delay_write_inc),
+		.delay_read_data (delay_read_data),
+		.delay_read_valid(delay_read_valid),
+		.delay_write_ack (delay_write_ack),
+		
+		.reg_writes_commit(reg_writes_commit),
+		
+		.full_reset(full_reset),
+		.resetting(resetting)
+	);
+	
+	/************************/
+	/* Peripheral resources */
+	/************************/
+	
+	// Lookup tables, for function calls
+	lut_master #(.data_width(data_width)) luts (
+		.clk(clk),
+		.reset(reset | full_reset),
+		
+		.lut_handle(lut_req_handle),
+		.req_arg(lut_req_arg),
+		.req(lut_req),
+		
+		.data_out(lut_data),
+		.valid(lut_valid),
+		
+		.invalid_request(invalid_lut_request)
+	);
+	
+	// Delay buffers
+	delay_master #(
+		.data_width(data_width), 
+		.n_buffers(8),
+		.memory_size(8192)
+	) delays (
+		.clk(clk),
+		.reset(reset | full_reset),
+		
+		.enable(1),
+		
+		.alloc_req  (alloc_delay),
+		.alloc_size ((buf_init_delay | (buf_init_delay >> 2) | (buf_init_delay >> 4)
+			| (buf_init_delay >> 8)) + 1),
+		.alloc_delay(buf_init_delay),
+		
+		.read_req(delay_read_req),
+		.write_req(delay_write_req),
+		
+		.write_handle(delay_req_handle),
+		.read_handle (delay_req_handle),
+		.write_data  (delay_write_data),
+		.write_inc   (delay_write_inc),
+			
+		.data_out(delay_read_data),
+		
+		.read_valid(delay_read_valid),
+		.write_ack(delay_write_ready)
+	);
+	
+	/**********/
+	/* Wiring */
+	/**********/
 	
 	reg signed [data_width - 1 : 0] sample_latched;
 	
@@ -67,7 +166,7 @@ module dsp_pipeline
 	
 	wire core_ready;
 
-    wire lut_req;
+	wire lut_req;
 	wire [`LUT_HANDLE_WIDTH - 1 : 0] lut_req_handle;
 	wire signed [data_width - 1 : 0] lut_req_arg;
 	wire signed [data_width - 1 : 0] lut_data;
@@ -79,7 +178,7 @@ module dsp_pipeline
 	wire block_reg_write;
 	wire invalid_lut_request;
 
-    wire delay_read_req;
+	wire delay_read_req;
 	wire delay_write_req;
 	wire [data_width - 1 : 0] delay_req_handle;
 	wire [data_width - 1 : 0] delay_write_data;
@@ -92,6 +191,7 @@ module dsp_pipeline
 	wire invalid_delay_write;
 	wire invalid_delay_alloc;
 	
+	// FSM deprecated; remove carefully without breaking anything later
 	always @(posedge clk) begin
 		wait_one <= 0;
 		if (reset | full_reset) begin
@@ -135,99 +235,6 @@ module dsp_pipeline
 			endcase
 		end
 	end
-	
-	dsp_core #(.data_width(data_width), .n_blocks(n_blocks), .n_channels(n_channels), .n_block_regs(n_block_registers)) core (
-		.clk(clk),
-		.reset(reset),
-		
-		.enable(enable),
-		
-		.tick(in_valid),
-		
-		.sample_in(in_sample),
-		.sample_out(out_sample),
-		
-		.ready(core_ready),
-		
-		.command_reg_write(reg_write),
-		.command_instr_write(instr_write),
-		
-		.command_instr_write_val(instr_val),
-		
-		.command_block_target(block_target),
-		.command_reg_target(reg_target),
-		.command_reg_write_val(ctrl_data),
-		
-		.lut_req(lut_req),
-		.lut_handle(lut_req_handle),
-		.lut_arg(lut_req_arg),
-		.lut_data(lut_data),
-		.lut_valid(lut_valid),
-		
-		.delay_read_req  (delay_read_req),
-		.delay_write_req (delay_write_req),
-		.delay_req_handle(delay_req_handle),
-		.delay_write_data(delay_write_data),
-		.delay_write_inc (delay_write_inc),
-		.delay_read_data (delay_read_data),
-		.delay_read_valid(delay_read_valid),
-		.delay_write_ack (delay_write_ack),
-		
-		.n_blocks_running(n_blocks_running),
-		
-		.reg_writes_commit(reg_writes_commit),
-		
-		.full_reset(full_reset),
-		.resetting(resetting),
-		
-		.commits_accepted(commits_accepted),
-		.byte_probe(byte_probe)
-	);
-	
-	lut_master #(.data_width(data_width)) luts
-		(
-			.clk(clk),
-			.reset(reset | full_reset),
-			
-			.lut_handle(lut_req_handle),
-			.req_arg(lut_req_arg),
-			.req(lut_req),
-			
-			.data_out(lut_data),
-			.valid(lut_valid),
-			
-			.invalid_request(invalid_lut_request)
-		);
-	
-	delay_master #(
-			.data_width(data_width), 
-			.n_buffers(8),
-			.memory_size(8192)
-		)
-		delays (
-			.clk(clk),
-			.reset(reset | full_reset),
-			
-			.enable(1),
-			
-			.alloc_req  (alloc_delay),
-			.alloc_size ((buf_init_delay | (buf_init_delay >> 2) | (buf_init_delay >> 4)
-                | (buf_init_delay >> 8)) + 1),
-			.alloc_delay(buf_init_delay),
-			
-			.read_req(delay_read_req),
-			.write_req(delay_write_req),
-			
-			.write_handle(delay_req_handle),
-			.read_handle (delay_req_handle),
-			.write_data  (delay_write_data),
-			.write_inc   (delay_write_inc),
-				
-			.data_out(delay_read_data),
-			
-			.read_valid(delay_read_valid),
-			.write_ack(delay_write_ready)
-		);
 endmodule
 
 

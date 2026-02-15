@@ -1,12 +1,11 @@
 `include "lut.vh"
 
-module sin_2pi_lut_16
-	(
-        input wire clk,
-        input wire reset,
+module sin_2pi_lut_16 (
+		input wire clk,
+		input wire reset,
 
-        input wire read,
-        output reg valid,
+		input wire read,
+		output reg valid,
 
 		input wire signed [15:0] x,
 		
@@ -27,60 +26,59 @@ module sin_2pi_lut_16
 	
 	assign frac = x[3:0];
 
-    reg [10:0] read_addr = 0;
-    reg [15:0] read_result;
+	reg [10:0] read_addr = 0;
+	reg [15:0] read_result;
 
-    reg wait_one = 0;
+	reg wait_one = 0;
 
-    reg [3:0] state = 0;
+	reg [3:0] state = 0;
 
-    always @(posedge clk) begin
-        read_result <= sin_lut[read_addr];
-        wait_one <= 0;
-        valid <= 0;
+	always @(posedge clk) begin
+		read_result <= sin_lut[read_addr];
+		wait_one <= 0;
+		valid <= 0;
 
-        if (reset) begin
-            state <= 0;
-        end
-        else begin
-            case (state)
-                0: begin
-                    if (read) begin
-                        valid <= 0;
-                        read_addr <= base_index;
-                        state <= 1;
-                        wait_one <= 1;
-                    end
-                end
+		if (reset) begin
+			state <= 0;
+		end
+		else begin
+			case (state)
+				0: begin
+					if (read) begin
+						valid <= 0;
+						read_addr <= base_index;
+						state <= 1;
+						wait_one <= 1;
+					end
+				end
 
-                1: begin
-                    if (!wait_one) begin
-                        base_sample <= read_result;
-                        read_addr <= next_index;
-                        state <= 2;
-                        wait_one <= 1;
-                    end
-                end
+				1: begin
+					if (!wait_one) begin
+						base_sample <= read_result;
+						read_addr <= next_index;
+						state <= 2;
+						wait_one <= 1;
+					end
+				end
 
-                2: begin
-                    if (!wait_one) begin
-                        next_sample <= read_result;
-                        state <= 0;
-                        valid <= 1;
-                    end
-                end
-            endcase
-        end
-    end
+				2: begin
+					if (!wait_one) begin
+						next_sample <= read_result;
+						state <= 0;
+						valid <= 1;
+					end
+				end
+			endcase
+		end
+	end
 endmodule
 
-module tanh_4_lut_16
-	(
-        input wire clk,
-        input wire reset,
+module tanh_4_lut_16 (
+		input wire clk,
+		input wire reset,
 
-        input wire read,
-        output reg valid,
+		input wire read,
+		output reg valid,
 
 		input wire signed [15:0] x,
 		
@@ -103,51 +101,51 @@ module tanh_4_lut_16
 	
 	assign frac = x[4:1];
 
-    reg [10:0] read_addr = 0;
-    reg [15:0] read_result;
+	reg [10:0] read_addr = 0;
+	reg [15:0] read_result;
 
-    reg wait_one = 0;
+	reg wait_one = 0;
 
-    reg [3:0] state = 0;
+	reg [3:0] state = 0;
 
-    always @(posedge clk) begin
-        read_result <= tanh_lut[read_addr];
-        wait_one <= 0;
+	always @(posedge clk) begin
+		read_result <= tanh_lut[read_addr];
+		wait_one <= 0;
 
-        if (reset) begin
-            state <= 0;
-            valid <= 0;
-        end
-        else begin
-            valid <= 0;
-            
-            case (state)
-                0: begin
-                    if (read) begin
-                        read_addr <= base_index;
-                        state <= 1;
-                        wait_one <= 1;
-                    end
-                end
+		if (reset) begin
+			state <= 0;
+			valid <= 0;
+		end
+		else begin
+			valid <= 0;
+			
+			case (state)
+				0: begin
+					if (read) begin
+						read_addr <= base_index;
+						state <= 1;
+						wait_one <= 1;
+					end
+				end
 
-                1: begin
-                    if (!wait_one) begin
-                        base_sample <= read_result;
-                        read_addr <= next_index;
-                        state <= 2;
-                        wait_one <= 1;
-                    end
-                end
+				1: begin
+					if (!wait_one) begin
+						base_sample <= read_result;
+						read_addr <= next_index;
+						state <= 2;
+						wait_one <= 1;
+					end
+				end
 
-                2: begin
-                    if (!wait_one) begin
-                        next_sample <= read_result;
-                        state <= 0;
-                        valid <= 1;
-                    end
-                end
-            endcase
-        end
-    end
+				2: begin
+					if (!wait_one) begin
+						next_sample <= read_result;
+						state <= 0;
+						valid <= 1;
+					end
+				end
+			endcase
+		end
+	end
 endmodule
 

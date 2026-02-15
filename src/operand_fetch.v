@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 256, parameter n_block_regs = 2, parameter bit last = 0)
+module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 256, parameter bit last = 0)
 	(
 		input wire clk,
 		input wire reset,
@@ -33,8 +33,8 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 		input wire [4 : 0] operation_in,
 		output reg [4 : 0] operation_out,
 
-        input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
-        output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
+		input wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
+		output reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
 		
 		input wire [3 : 0] dest_in,
 		output reg [3 : 0] dest_out,
@@ -92,7 +92,7 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 	wire [data_width - 1 : 0] channel_read_val = channels[src_live];
 	
 	integer j;
-    always @(posedge clk) begin
+	always @(posedge clk) begin
 		if (reset) begin
 			for (j = 0; j < 16; j = j + 1) begin
 				channels[j] = 0;
@@ -101,7 +101,7 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 			if (channel_write_enable)
 				channels[channel_write_addr] <= channel_write_val;
 		end
-    end
+	end
 	
 	reg [3 : 0] channels_scoreboard [15 : 0];
 	reg [3 : 0] accumulator_pending_writes;
@@ -248,7 +248,7 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 
 	reg commit_flag_latched;
 	
-    reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_latched;
+	reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_latched;
 
 	wire  [3 : 0] arg_pending_writes = channels_scoreboard[src_live];
 	
@@ -282,8 +282,8 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 				end
 			end
 		end else begin
-            arg_valid <= 0;
-        end
+			arg_valid <= 0;
+		end
 	end
 	
 	localparam IDLE = 2'd0;
@@ -326,13 +326,13 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 	
 	always @(posedge clk) begin
 		if (reset) begin
-			busy    <= 0;
+			busy	<= 0;
 			out_valid <= 0;
 			commit_id   <= 0;
-            branch_out   <= 0;
+			branch_out    <= 0;
 		end else if (enable) begin
-            
-            branch_out <= branch_out;
+			
+			branch_out <= branch_out;
 
 			if (take_in) begin
 				if (!needs_stall) begin
@@ -447,7 +447,7 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 	end
 endmodule
 
-module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter n_block_regs = 2)
+module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256)
 	(
 		input  wire clk,
 		input  wire reset,
@@ -475,8 +475,8 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		input  wire [4 : 0] operation_in,
 		output wire [4 : 0] operation_out,
 
-        input  wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
-        output wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
+		input  wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_in,
+		output wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out,
 		
 		input  wire [3 : 0] dest_in,
 		output wire [3 : 0] dest_out,
@@ -555,24 +555,24 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 	reg signed [data_width - 1 : 0] arg_c_3;
 
 	reg signed [3 : 0] src_a_1;
-	reg signed         src_a_reg_1;
-	reg signed         arg_a_needed_1;
+	reg signed		 src_a_reg_1;
+	reg signed		 arg_a_needed_1;
 	reg signed [3 : 0] src_b_1;
-	reg signed         src_b_reg_1;
-	reg signed         arg_b_needed_1;
+	reg signed		 src_b_reg_1;
+	reg signed		 arg_b_needed_1;
 	reg signed [3 : 0] src_c_1;
-	reg signed         src_c_reg_1;
-	reg signed         arg_c_needed_1;
+	reg signed		 src_c_reg_1;
+	reg signed		 arg_c_needed_1;
 
 	reg signed [3 : 0] src_a_2;
-	reg signed         src_a_reg_2;
-	reg signed         arg_a_needed_2;
+	reg signed		 src_a_reg_2;
+	reg signed		 arg_a_needed_2;
 	reg signed [3 : 0] src_b_2;
-	reg signed         src_b_reg_2;
-	reg signed         arg_b_needed_2;
+	reg signed		 src_b_reg_2;
+	reg signed		 arg_b_needed_2;
 	reg signed [3 : 0] src_c_2;
-	reg signed         src_c_reg_2;
-	reg signed         arg_c_needed_2;
+	reg signed		 src_c_reg_2;
+	reg signed		 arg_c_needed_2;
 	
 	always @(posedge clk) begin
 		if (reset) begin
@@ -708,8 +708,8 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		.operation_in(operation_in),
 		.operation_out(operation_1_out),
 
-        .misc_op_in(misc_op_in),
-        .misc_op_out(misc_op_1_out),
+		.misc_op_in(misc_op_in),
+		.misc_op_out(misc_op_1_out),
 		
 		.dest_in(dest_in),
 		.dest_out(dest_1_out),
@@ -823,8 +823,8 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		.operation_in(operation_1_out),
 		.operation_out(operation_2_out),
 
-        .misc_op_in(misc_op_1_out),
-        .misc_op_out(misc_op_2_out),
+		.misc_op_in(misc_op_1_out),
+		.misc_op_out(misc_op_2_out),
 		
 		.dest_in(dest_1_out),
 		.dest_out(dest_2_out),
@@ -936,8 +936,8 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		.operation_in(operation_2_out),
 		.operation_out(operation_3_out),
 
-        .misc_op_in(misc_op_2_out),
-        .misc_op_out(misc_op_3_out),
+		.misc_op_in(misc_op_2_out),
+		.misc_op_out(misc_op_3_out),
 		
 		.dest_in(dest_2_out),
 		.dest_out(dest_3_out),

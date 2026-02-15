@@ -57,7 +57,7 @@ module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 	
 	wire signed [2 * data_width - 1 : 0] prod_a = mul_arg_aa * mul_arg_ab;
 	
-    reg signed [2 * data_width - 1 : 0] prod_a_latched;
+	reg signed [2 * data_width - 1 : 0] prod_a_latched;
 
 	wire signed [2 * data_width - 1 : 0] prod_a_shifted = $signed(prod_a_latched) >>> (data_width - 1 - gain_shift);
 	wire signed [2 * data_width - 1 : 0] prod_a_shifted_sat = (prod_a_shifted > sat_max) ? sat_max : ((prod_a_shifted < sat_min) ? sat_min : prod_a_shifted);
@@ -72,7 +72,7 @@ module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 	
 	wire signed [2 * data_width - 1 : 0] prod_b_shifted = $signed(prod_b_latched) >>> (data_width - 1 - gain_shift);
 	wire signed [2 * data_width - 1 : 0] prod_b_shifted_sat = (prod_b_shifted > sat_max) ? sat_max : ((prod_b_shifted < sat_min) ? sat_min : prod_b_shifted);
-	wire signed [    data_width - 1 : 0] prod_b_final = prod_b_shifted_sat[data_width - 1 : 0];
+	wire signed [	data_width - 1 : 0] prod_b_final = prod_b_shifted_sat[data_width - 1 : 0];
 	
 	wire signed [data_width - 1 : 0] prod_sum = prod_a_final + prod_b_final;
 	wire signed [data_width - 1 : 0] prod_sum_final = (prod_sum > sat_max_dw) ? sat_max_dw : ((prod_sum < sat_min_dw) ? sat_min_dw : prod_sum);
@@ -165,14 +165,14 @@ module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 					state <= `MIXER_APPLY_INPUT_GAIN_2;
 				end
 				
-                `MIXER_APPLY_INPUT_GAIN_2: begin
-                    prod_a_latched <= prod_a;
-                    state <= `MIXER_APPLY_INPUT_GAIN_3;
-                end
+				`MIXER_APPLY_INPUT_GAIN_2: begin
+					prod_a_latched <= prod_a;
+					state <= `MIXER_APPLY_INPUT_GAIN_3;
+				end
 
-                `MIXER_APPLY_INPUT_GAIN_3: begin
-                    state <= `MIXER_APPLY_INPUT_GAIN_DONE;
-                end
+				`MIXER_APPLY_INPUT_GAIN_3: begin
+					state <= `MIXER_APPLY_INPUT_GAIN_DONE;
+				end
 
 				`MIXER_APPLY_INPUT_GAIN_DONE: begin
 					in_sample_out <= prod_a_final;
@@ -186,13 +186,13 @@ module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 				
 				`MIXER_MIX_PIPELINES_2: begin
 					prod_a_latched <= prod_a;
-                    prod_b_latched <= prod_b;
-                    state <= `MIXER_MIX_PIPELINES_3;
+					prod_b_latched <= prod_b;
+					state <= `MIXER_MIX_PIPELINES_3;
 				end
 
-                `MIXER_MIX_PIPELINES_3: begin
-                    state <= `MIXER_APPLY_OUTPUT_GAIN_1;
-                end
+				`MIXER_MIX_PIPELINES_3: begin
+					state <= `MIXER_APPLY_OUTPUT_GAIN_1;
+				end
 
 				`MIXER_APPLY_OUTPUT_GAIN_1: begin
 					mul_arg_aa <= prod_sum_final;
@@ -204,10 +204,10 @@ module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 					state <= `MIXER_APPLY_OUTPUT_GAIN_3;
 				end
 				
-                `MIXER_APPLY_OUTPUT_GAIN_3: begin
-                    prod_a_latched <= prod_a;
-                    state <= 11;
-                end
+				`MIXER_APPLY_OUTPUT_GAIN_3: begin
+					prod_a_latched <= prod_a;
+					state <= 11;
+				end
 
 				`MIXER_APPLY_OUTPUT_GAIN_DONE: begin
 					out_sample <= prod_a_final;

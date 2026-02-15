@@ -1,319 +1,220 @@
 `include "engine.vh"
 `include "core.vh"
 
-module dsp_engine_seq
-	#(
+module dsp_engine #(
 		parameter n_blocks 			= 255,
-		parameter n_block_registers = 16,
 		parameter data_width 		= 16,
-		parameter n_channels 		= 16,
-		parameter n_sram_banks 		= 64,
-		parameter sram_bank_size 	= 1024,
 		parameter spi_fifo_length	= 32
-	)
-	(
-        input wire clk,
-        input wire reset,
+	) (
+		input wire clk,
+		input wire reset,
 
-        input wire [data_width - 1 : 0]  in_sample,
-        output reg [data_width - 1 : 0] out_sample,
-        
-        input wire sample_valid,
-        
-        input  wire [7:0] command_in,
-        input  wire command_in_valid,
-        output wire invalid_command,
-        
-        output reg ready,
-        
-        output wire [$clog2(spi_fifo_length) : 0] fifo_count,
-
-        output wire current_pipeline,
-
-        output wire [7:0] out
-    );
-    
-    reg  signed [data_width - 1 : 0]  in_sample_latched;
-    wire signed [data_width - 1 : 0]  in_sample_amped;
-    wire signed [data_width - 1 : 0] out_samples [1:0];
-    wire signed [data_width - 1 : 0] out_sample_mixed;
-
-    wire in_valid;
-
-    wire pipeline_a_ready;
-    wire pipeline_b_ready;
-
-    wire pipeline_a_error;
-    wire pipeline_b_error;
-
-    wire pipelines_swapping;
-
-    wire [1:0] block_instr_write;
-    wire [1:0] block_reg_write;
-    wire [1:0] block_reg_update;
-    wire [1:0] reg_writes_commit;
-    wire [1:0] alloc_delay;
-    wire [1:0] pipeline_reset;
-    wire [1:0] pipeline_full_reset;
-    wire [1:0] pipeline_enables;
-    wire [1:0] pipeline_resetting;
-    wire [1:0] pipeline_regfiles_syncing;
-
-    reg pipeline_tick = 0;
-
-    wire [$clog2(n_blocks) 	    - 1 : 0] block_target;
-    wire [$clog2(n_blocks) + `BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target;
-
-    wire [data_width 		 - 1 : 0] ctrl_data_out;
-    wire [`BLOCK_INSTR_WIDTH - 1 : 0] ctrl_instr_out;
-
-    wire swap_pipelines;
-    wire controller_ready;
-
-    reg ctrl_inp_ready = 0;
-    wire ctrl_inp_req;
-    wire ctrl_inp_ack;
-
-    wire [7:0] command_byte;
-    wire inp_fifo_nonempty;
-    wire inp_fifo_full;
-
-    wire inp_fifo_next;
-
-    reg [63 : 0] sample_ctr = 0;
-
-    reg apply_input_gain = 0;
-    reg mix_outputs = 0;
-
-    reg out_sample_ready;
-    wire in_sample_valid;
-    wire out_sample_valid;
-
-    reg [7:0] state = `ENGINE_STATE_READY;
-
-    reg inp_fifo_waiting = 0;
-
-    wire [1:0] reg_write_acks;
-    
-    wire set_input_gain;
-    wire set_output_gain;
-    
-    wire pipeline_a_block_instr_write 	= block_instr_write		[current_pipeline];
-    wire pipeline_a_block_reg_write 	= block_reg_write  		[current_pipeline];
-    wire pipeline_a_block_reg_update 	= block_reg_update 		[current_pipeline];
-    wire pipeline_a_reg_writes_commit 	= reg_writes_commit 	[current_pipeline];
-    wire pipeline_a_regfile_syncing;
-    wire pipeline_a_alloc_delay 		= alloc_delay 			[current_pipeline];
-    wire pipeline_a_enable 				= pipeline_enables 		[current_pipeline];
-    wire pipeline_a_full_reset 			= pipeline_full_reset	[current_pipeline];
-    wire pipeline_a_resetting;
-    wire pipeline_a_reset	 			= pipeline_reset		[current_pipeline];
-
-    wire [$clog2(n_blocks) : 0] pipeline_a_n_blocks = pipeline_n_blocks	[current_pipeline];
-
-    wire pipeline_b_block_instr_write 	= block_instr_write		[~current_pipeline];
-    wire pipeline_b_block_reg_write 	= block_reg_write  		[~current_pipeline];
-    wire pipeline_b_block_reg_update 	= block_reg_update 		[~current_pipeline];
-    wire pipeline_b_reg_writes_commit 	= reg_writes_commit 	[~current_pipeline];
-    wire pipeline_b_regfile_syncing;
-    wire pipeline_b_alloc_delay 		= alloc_delay 			[~current_pipeline];
-    wire pipeline_b_enable 				= pipeline_enables 		[~current_pipeline];
-    wire pipeline_b_full_reset 			= pipeline_full_reset	[~current_pipeline];
-    wire pipeline_b_resetting;
-    wire pipeline_b_reset	 			= pipeline_reset		[~current_pipeline];
-
-    wire [$clog2(n_blocks) : 0] pipeline_b_n_blocks = pipeline_n_blocks	[~current_pipeline];
-    
-    assign pipeline_resetting = {pipeline_b_resetting, pipeline_a_resetting};
-    assign pipeline_regfiles_syncing = {(current_pipeline) ? pipeline_a_regfile_syncing : pipeline_a_regfile_syncing,
-										(current_pipeline) ? pipeline_b_regfile_syncing : pipeline_a_regfile_syncing};
-    
-    wire [$clog2(n_blocks) - 1 : 0] pipeline_n_blocks [1:0];
-    wire [31 : 0] pipeline_n_commits [1:0];
-    wire [7 : 0] pipeline_byte_probe [1:0];
-
-    dsp_pipeline
-		#(
-			.data_width(data_width),
-			.n_blocks(n_blocks),
-			.n_block_registers(n_block_registers),
-			.n_channels(n_channels)
-		)
-		pipeline_a
-		(
-			.clk(clk),
-			.reset(reset | pipeline_a_reset),
-			
-			.in_sample(in_sample_amped),
-			.in_valid(pipeline_tick),
-			.out_sample(out_samples[0]),
-			
-			.ready(pipeline_a_ready),
-			.error(pipeline_a_error),
-			
-			.block_target(block_target),
-			.reg_target(reg_target),
-	
-			.instr_val(ctrl_instr_out),
-			.instr_write(pipeline_a_block_instr_write),
+		input wire [data_width - 1 : 0]  in_sample,
+		output reg [data_width - 1 : 0] out_sample,
 		
-			.ctrl_data(ctrl_data_out),
-			.buf_init_delay(buf_init_delay),
-			.reg_write(pipeline_a_block_reg_write),
-			.reg_write_ack(reg_write_acks[0]),
-			.reg_update(pipeline_a_block_reg_update),
-			
-			.reg_writes_commit(pipeline_a_reg_writes_commit),
+		input wire sample_valid,
 		
-			.alloc_delay(pipeline_a_alloc_delay),
-			
-			.full_reset(pipeline_a_full_reset),
-			.enable(pipeline_a_enable),
-			
-			.resetting(pipeline_a_resetting),
-
-            .n_blocks_running(pipeline_n_blocks[0]),
-            .commits_accepted(pipeline_n_commits[0]),
-            .byte_probe(pipeline_byte_probe[0])
-		);
-    
-    dsp_pipeline
-		#(
-			.data_width(data_width),
-			.n_blocks(n_blocks),
-			.n_block_registers(n_block_registers),
-			.n_channels(n_channels)
-		)
-		pipeline_b
-		(
-			.clk(clk),
-			.reset(reset | pipeline_b_reset),
-			
-			.in_sample(in_sample_amped),
-			.in_valid(pipeline_tick),
-			.out_sample(out_samples[1]),
-			
-			.ready(pipeline_b_ready),
-			.error(pipeline_b_error),
-			
-			.block_target(block_target),
-			.reg_target(reg_target),
-	
-			.instr_val(ctrl_instr_out),
-			.instr_write(pipeline_b_block_instr_write),
+		input  wire [7:0] command_in,
+		input  wire command_in_valid,
+		output wire invalid_command,
 		
-			.ctrl_data(ctrl_data_out),
-			.buf_init_delay(buf_init_delay),
-			.reg_write(pipeline_b_block_reg_write),
-			.reg_update(pipeline_b_block_reg_update),
-			
-			.reg_writes_commit(pipeline_b_reg_writes_commit),
+		output reg ready,
 		
-			.alloc_delay(pipeline_b_alloc_delay),
+		output wire [$clog2(spi_fifo_length) : 0] fifo_count,
 
-            .full_reset(pipeline_b_full_reset),
-			.enable(pipeline_b_enable),
-			
-			.resetting(pipeline_b_resetting),
+		output wire current_pipeline,
 
-            .n_blocks_running(pipeline_n_blocks[1]),
-            .commits_accepted(pipeline_n_commits[1]),
-            .byte_probe(pipeline_byte_probe[1])
-		);
+		output wire [7:0] out
+	);
+
+	/*******/
+	/*******/
+	/* DSP */
+	/*******/
+	/*******/
+
+	/***************************************************************************/
+	/* Dual DSP piplines for atomic, artifact-free runtime DSP reconfiguration */
+	/***************************************************************************/
 	
-	
-	
-	fifo_buffer #(.data_width(8), .n(spi_fifo_length)) spi_fifo
-		(
-			.clk(clk),
-			.reset(reset),
-			
-			.data_in(command_in),
-			.data_out(command_byte),
-			
-			.write(command_in_valid),
-			.next(inp_fifo_next),
-			
-			.nonempty(inp_fifo_nonempty),
-			.full(inp_fifo_full),
-			
-			.count(fifo_count)
-		);
+	dsp_pipeline #(.data_width(data_width), .n_blocks(n_blocks)) pipeline_a (
+		.clk(clk),
+		.reset(reset | pipeline_a_reset),
 		
-	wire [2 * data_width - 1 : 0] buf_init_delay;
+		.in_sample(in_sample_amped),
+		.in_valid(pipeline_tick),
+		.out_sample(out_samples[0]),
+		
+		.ready(pipeline_a_ready),
+		.error(pipeline_a_error),
+		
+		.block_target(block_target),
+		.reg_target(reg_target),
 
-    control_unit #(.n_blocks(n_blocks), .data_width(data_width), .n_block_registers(n_block_registers)) controller
-		(
-			.clk(clk),
-			.reset(reset),
-			
-			.in_byte(command_byte),
-			.in_valid(inp_fifo_nonempty),
-			.next(inp_fifo_next),
-			
-			.current_pipeline(current_pipeline),
-			
-			.block_target(block_target),
-			.reg_target(reg_target),
-			.instr_out(ctrl_instr_out),
-			.data_out(ctrl_data_out),
-			
-			.block_instr_write(block_instr_write),
-			.block_reg_write(block_reg_write),
-			.block_reg_update(block_reg_update),
-			
-			.reg_writes_commit(reg_writes_commit),
-			
-			.alloc_delay(alloc_delay),
-			.buf_init_delay(buf_init_delay),
-			
-			.swap_pipelines(swap_pipelines),
-			.pipelines_swapping(pipelines_swapping),
-			.pipeline_regfiles_syncing(pipeline_regfiles_syncing),
-			.pipeline_reset(pipeline_reset),
-			.pipeline_full_reset(pipeline_full_reset),
-			.pipeline_resetting(pipeline_resetting),
-			.pipeline_enables(pipeline_enables),
-			.pipeline_n_blocks(pipeline_n_blocks),
-			.pipeline_n_commits(pipeline_n_commits),
-			.pipeline_byte_probe(pipeline_byte_probe),
-			
-			.set_input_gain(set_input_gain),
-			.set_output_gain(set_output_gain),
-			
-			.invalid(invalid_command),
-			
-			.spi_output(out)
-		);
+		.instr_val(ctrl_instr_out),
+		.instr_write(pipeline_a_block_instr_write),
 	
-    mixer #(.data_width(data_width), .gain_shift(5)) mixerr (
-        .clk(clk),
-        .reset(reset),
-        
-        .in_sample(in_sample_latched),
-        .in_sample_out(in_sample_amped),
-        
-        .out_sample_in_a(out_samples[0]),
-        .out_sample_in_b(out_samples[1]),
-        
-        .out_sample(out_sample_mixed),
-        
-        .data_in(ctrl_data_out),
-        
-        .in_sample_valid(apply_input_gain),
-        .out_samples_valid(mix_outputs),
-        
-        .in_sample_mixed(in_sample_valid),
-        .out_sample_valid(out_sample_valid),
-        
-        .set_input_gain(set_input_gain),
-        .set_output_gain(set_output_gain),
-        
-        .swap_pipelines(swap_pipelines),
-        .pipelines_swapping(pipelines_swapping),
-        .current_pipeline(current_pipeline)
-    );
+		.ctrl_data(ctrl_data_out),
+		.buf_init_delay(buf_init_delay),
+		.reg_write(pipeline_a_block_reg_write),
+		.reg_write_ack(reg_write_acks[0]),
+		.reg_update(pipeline_a_block_reg_update),
+		
+		.reg_writes_commit(pipeline_a_reg_writes_commit),
 	
+		.alloc_delay(pipeline_a_alloc_delay),
+		
+		.full_reset(pipeline_a_full_reset),
+		.enable(pipeline_a_enable),
+		
+		.resetting(pipeline_a_resetting),
+
+		.n_blocks_running(pipeline_n_blocks[0]),
+		.commits_accepted(pipeline_n_commits[0]),
+		.byte_probe(pipeline_byte_probe[0])
+	);
+	
+	dsp_pipeline #(.data_width(data_width), .n_blocks(n_blocks)) pipeline_b (
+		.clk(clk),
+		.reset(reset | pipeline_b_reset),
+		
+		.in_sample(in_sample_amped),
+		.in_valid(pipeline_tick),
+		.out_sample(out_samples[1]),
+		
+		.ready(pipeline_b_ready),
+		.error(pipeline_b_error),
+		
+		.block_target(block_target),
+		.reg_target(reg_target),
+
+		.instr_val(ctrl_instr_out),
+		.instr_write(pipeline_b_block_instr_write),
+	
+		.ctrl_data(ctrl_data_out),
+		.buf_init_delay(buf_init_delay),
+		.reg_write(pipeline_b_block_reg_write),
+		.reg_update(pipeline_b_block_reg_update),
+		
+		.reg_writes_commit(pipeline_b_reg_writes_commit),
+	
+		.alloc_delay(pipeline_b_alloc_delay),
+
+		.full_reset(pipeline_b_full_reset),
+		.enable(pipeline_b_enable),
+		
+		.resetting(pipeline_b_resetting),
+
+		.n_blocks_running(pipeline_n_blocks[1]),
+		.commits_accepted(pipeline_n_commits[1]),
+		.byte_probe(pipeline_byte_probe[1])
+	);
+	
+	/**********************************************************/
+	/* Mixer; applies input/output gain, crossfades pipelines */
+	/**********************************************************/
+	
+	mixer #(.data_width(data_width), .gain_shift(5)) mixerr (
+		.clk(clk),
+		.reset(reset),
+		
+		.in_sample(in_sample_latched),
+		.in_sample_out(in_sample_amped),
+		
+		.out_sample_in_a(out_samples[0]),
+		.out_sample_in_b(out_samples[1]),
+		
+		.out_sample(out_sample_mixed),
+		
+		.data_in(ctrl_data_out),
+		
+		.in_sample_valid(apply_input_gain),
+		.out_samples_valid(mix_outputs),
+		
+		.in_sample_mixed(in_sample_valid),
+		.out_sample_valid(out_sample_valid),
+		
+		.set_input_gain(set_input_gain),
+		.set_output_gain(set_output_gain),
+		
+		.swap_pipelines(swap_pipelines),
+		.pipelines_swapping(pipelines_swapping),
+		.current_pipeline(current_pipeline)
+	);
+	
+	/*****************/
+	/*****************/
+	/* Input/control */
+	/*****************/
+	/*****************/
+	
+	// A FIFO to store incoming SPI transfers
+	fifo_buffer #(.data_width(8), .n(spi_fifo_length)) spi_fifo (
+		.clk(clk),
+		.reset(reset),
+		
+		.data_in(command_in),
+		.data_out(command_byte),
+		
+		.write(command_in_valid),
+		.next(inp_fifo_next),
+		
+		.nonempty(inp_fifo_nonempty),
+		.full(inp_fifo_full),
+		
+		.count(fifo_count)
+	);
+	
+	/************************************************************/
+	/* Global control unit; executes commands recieved over SPI */
+	/************************************************************/
+	
+	control_unit #(.n_blocks(n_blocks), .data_width(data_width)) controller (
+		.clk(clk),
+		.reset(reset),
+		
+		.in_byte(command_byte),
+		.in_valid(inp_fifo_nonempty),
+		.next(inp_fifo_next),
+		
+		.current_pipeline(current_pipeline),
+		
+		.block_target(block_target),
+		.reg_target(reg_target),
+		.instr_out(ctrl_instr_out),
+		.data_out(ctrl_data_out),
+		
+		.block_instr_write(block_instr_write),
+		.block_reg_write(block_reg_write),
+		.block_reg_update(block_reg_update),
+		
+		.reg_writes_commit(reg_writes_commit),
+		
+		.alloc_delay(alloc_delay),
+		.buf_init_delay(buf_init_delay),
+		
+		.swap_pipelines(swap_pipelines),
+		.pipelines_swapping(pipelines_swapping),
+		.pipeline_regfiles_syncing(pipeline_regfiles_syncing),
+		.pipeline_reset(pipeline_reset),
+		.pipeline_full_reset(pipeline_full_reset),
+		.pipeline_resetting(pipeline_resetting),
+		.pipeline_enables(pipeline_enables),
+		.pipeline_n_blocks(pipeline_n_blocks),
+		.pipeline_n_commits(pipeline_n_commits),
+		.pipeline_byte_probe(pipeline_byte_probe),
+		
+		.set_input_gain(set_input_gain),
+		.set_output_gain(set_output_gain),
+		
+		.invalid(invalid_command),
+		
+		.spi_output(out)
+	);
+	
+	/*******/
+	/* FSM */
+	/*******/
 	always @(posedge clk) begin
 		pipeline_tick 		<= 0;
 		
@@ -360,4 +261,109 @@ module dsp_engine_seq
 			end
 		endcase
 	end
+	
+	/**********/
+	/* Wiring */
+	/**********/
+	
+	reg  signed [data_width - 1 : 0]  in_sample_latched;
+	wire signed [data_width - 1 : 0]  in_sample_amped;
+	wire signed [data_width - 1 : 0] out_samples [1:0];
+	wire signed [data_width - 1 : 0] out_sample_mixed;
+
+	wire in_valid;
+
+	wire pipeline_a_ready;
+	wire pipeline_b_ready;
+
+	wire pipeline_a_error;
+	wire pipeline_b_error;
+
+	wire pipelines_swapping;
+
+	wire [1:0] block_instr_write;
+	wire [1:0] block_reg_write;
+	wire [1:0] block_reg_update;
+	wire [1:0] reg_writes_commit;
+	wire [1:0] alloc_delay;
+	wire [1:0] pipeline_reset;
+	wire [1:0] pipeline_full_reset;
+	wire [1:0] pipeline_enables;
+	wire [1:0] pipeline_resetting;
+	wire [1:0] pipeline_regfiles_syncing;
+
+	reg pipeline_tick = 0;
+
+	wire [$clog2(n_blocks) 		- 1 : 0] block_target;
+	wire [$clog2(n_blocks) + `BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target;
+
+	wire [data_width 		 - 1 : 0] ctrl_data_out;
+	wire [`BLOCK_INSTR_WIDTH - 1 : 0] ctrl_instr_out;
+
+	wire swap_pipelines;
+	wire controller_ready;
+
+	reg ctrl_inp_ready = 0;
+	wire ctrl_inp_req;
+	wire ctrl_inp_ack;
+
+	wire [7:0] command_byte;
+	wire inp_fifo_nonempty;
+	wire inp_fifo_full;
+
+	wire inp_fifo_next;
+
+	reg [63 : 0] sample_ctr = 0;
+
+	reg apply_input_gain = 0;
+	reg mix_outputs = 0;
+
+	reg out_sample_ready;
+	wire in_sample_valid;
+	wire out_sample_valid;
+
+	reg [7:0] state = `ENGINE_STATE_READY;
+
+	reg inp_fifo_waiting = 0;
+
+	wire [1:0] reg_write_acks;
+	
+	wire set_input_gain;
+	wire set_output_gain;
+	
+	wire [2 * data_width - 1 : 0] buf_init_delay;
+	
+	wire pipeline_a_block_instr_write 	= block_instr_write		[current_pipeline];
+	wire pipeline_a_block_reg_write 	= block_reg_write  		[current_pipeline];
+	wire pipeline_a_block_reg_update 	= block_reg_update 		[current_pipeline];
+	wire pipeline_a_reg_writes_commit 	= reg_writes_commit 	[current_pipeline];
+	wire pipeline_a_regfile_syncing;
+	wire pipeline_a_alloc_delay 		= alloc_delay 			[current_pipeline];
+	wire pipeline_a_enable 				= pipeline_enables 		[current_pipeline];
+	wire pipeline_a_full_reset 			= pipeline_full_reset	[current_pipeline];
+	wire pipeline_a_resetting;
+	wire pipeline_a_reset	 			= pipeline_reset		[current_pipeline];
+
+	wire [$clog2(n_blocks) : 0] pipeline_a_n_blocks = pipeline_n_blocks	[current_pipeline];
+
+	wire pipeline_b_block_instr_write 	= block_instr_write		[~current_pipeline];
+	wire pipeline_b_block_reg_write 	= block_reg_write  		[~current_pipeline];
+	wire pipeline_b_block_reg_update 	= block_reg_update 		[~current_pipeline];
+	wire pipeline_b_reg_writes_commit 	= reg_writes_commit 	[~current_pipeline];
+	wire pipeline_b_regfile_syncing;
+	wire pipeline_b_alloc_delay 		= alloc_delay 			[~current_pipeline];
+	wire pipeline_b_enable 				= pipeline_enables 		[~current_pipeline];
+	wire pipeline_b_full_reset 			= pipeline_full_reset	[~current_pipeline];
+	wire pipeline_b_resetting;
+	wire pipeline_b_reset	 			= pipeline_reset		[~current_pipeline];
+
+	wire [$clog2(n_blocks) : 0] pipeline_b_n_blocks = pipeline_n_blocks	[~current_pipeline];
+	
+	assign pipeline_resetting = {pipeline_b_resetting, pipeline_a_resetting};
+	assign pipeline_regfiles_syncing = {(current_pipeline) ? pipeline_a_regfile_syncing : pipeline_a_regfile_syncing,
+										(current_pipeline) ? pipeline_b_regfile_syncing : pipeline_a_regfile_syncing};
+	
+	wire [$clog2(n_blocks) - 1 : 0] pipeline_n_blocks [1:0];
+	wire [31 : 0] pipeline_n_commits [1:0];
+	wire [7  : 0] pipeline_byte_probe[1:0];
 endmodule

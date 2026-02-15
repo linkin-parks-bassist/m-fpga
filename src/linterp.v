@@ -10,38 +10,38 @@ module combinatorial_interp
 		output wire signed [data_width  - 1 : 0] interpolated
 	);
 
-    wire signed [data_width-1:0] diff = target - base;
+	wire signed [data_width-1:0] diff = target - base;
 
-    wire diff_sign = diff[data_width-1];
-    wire [data_width-1:0] diff_mag =
-        diff_sign ? -diff : diff;
+	wire diff_sign = diff[data_width-1];
+	wire [data_width-1:0] diff_mag =
+		diff_sign ? -diff : diff;
 
-    wire signed [data_width-1:0] interp_terms [0:interp_bits-1];
-    wire signed [data_width-1:0] interp_sums  [0:interp_bits-1];
+	wire signed [data_width-1:0] interp_terms [0:interp_bits-1];
+	wire signed [data_width-1:0] interp_sums  [0:interp_bits-1];
 
-    genvar i;
-    generate
-        for (i = 0; i < interp_bits; i = i + 1) begin : gen_interp
+	genvar i;
+	generate
+		for (i = 0; i < interp_bits; i = i + 1) begin : gen_interp
 
-            wire [data_width-1:0] mag_term = diff_mag >> (i+1);
+			wire [data_width-1:0] mag_term = diff_mag >> (i+1);
 
-            wire signed [data_width-1:0] signed_term =
-                diff_sign ? -$signed(mag_term)
-                          :  $signed(mag_term);
+			wire signed [data_width-1:0] signed_term =
+				diff_sign ? -$signed(mag_term)
+						  :  $signed(mag_term);
 
-            assign interp_terms[i] =
-                frac[interp_bits-1-i] ? signed_term : 0;
+			assign interp_terms[i] =
+				frac[interp_bits-1-i] ? signed_term : 0;
 
-            if (i == 0) begin
-                assign interp_sums[i] = base + interp_terms[i];
-            end else begin
-                assign interp_sums[i] =
-                    interp_sums[i-1] + interp_terms[i];
-            end
-        end
-    endgenerate
+			if (i == 0) begin
+				assign interp_sums[i] = base + interp_terms[i];
+			end else begin
+				assign interp_sums[i] =
+					interp_sums[i-1] + interp_terms[i];
+			end
+		end
+	endgenerate
 
-    assign interpolated = interp_sums[interp_bits-1];
+	assign interpolated = interp_sums[interp_bits-1];
 
 endmodule
 

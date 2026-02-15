@@ -4,22 +4,22 @@
 
 module control_unit
 	#(
-		parameter n_blocks 	    	= 256,
+		parameter n_blocks 			= 256,
 		parameter n_block_registers = 2,
-		parameter data_width 	    = 16
+		parameter data_width 		= 16
 	)
 	(
 		input wire clk,
 		input wire reset,
 
-        output wire [7:0] control_state,
+		output wire [7:0] control_state,
 		
 		input wire [7:0] in_byte,
 		input wire in_valid,
 		
 		output reg [$clog2(n_blocks)	  - 1 : 0] block_target,
 		output reg [$clog2(n_blocks) + `BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target,
-		output reg [`BLOCK_INSTR_WIDTH    - 1 : 0] instr_out,
+		output reg [`BLOCK_INSTR_WIDTH	- 1 : 0] instr_out,
 		output reg [data_width 			  - 1 : 0] data_out,
 		output reg [2 * data_width 		  - 1 : 0] buf_init_delay,
 		
@@ -47,9 +47,9 @@ module control_unit
 		
 		output reg [7:0] spi_output,
 
-        input wire [$clog2(n_blocks) - 1 : 0] pipeline_n_blocks [1:0],
-        input wire [31 : 0] pipeline_n_commits [1:0],
-        input wire [7 : 0] pipeline_byte_probe [1:0]
+		input wire [$clog2(n_blocks) - 1 : 0] pipeline_n_blocks [1:0],
+		input wire [31 : 0] pipeline_n_commits [1:0],
+		input wire [7 : 0] pipeline_byte_probe [1:0]
 	);
 	
 	reg [7:0] in_byte_latched = 0;
@@ -57,14 +57,14 @@ module control_unit
 	
 	localparam instr_n_bytes = `BLOCK_INSTR_WIDTH / 8;
 	
-    assign control_state = state;
+	assign control_state = state;
 	reg [7:0] state = `CONTROLLER_STATE_READY;
 	reg [7:0] ret_state;
 	
 	reg [5:0] byte_ctr;
 
-    wire [data_width - 1 + 8 : 0] data_out_in_byte  = {data_out, in_byte};
-    wire [`BLOCK_INSTR_WIDTH - 1 + 8 : 0] instr_out_in_byte = {instr_out, in_byte};
+	wire [data_width - 1 + 8 : 0] data_out_in_byte  = {data_out, in_byte};
+	wire [`BLOCK_INSTR_WIDTH - 1 + 8 : 0] instr_out_in_byte = {instr_out, in_byte};
 	
 	reg load_block_number;
 	reg load_reg_number;
@@ -76,7 +76,7 @@ module control_unit
 	
 	wire target_pipeline = ~command[3];
 
-    assign ready = (state == `CONTROLLER_STATE_READY);
+	assign ready = (state == `CONTROLLER_STATE_READY);
 	
 	always @(posedge clk) begin
 		reg_writes_commit <= 0;
@@ -122,7 +122,7 @@ module control_unit
 							load_reg_number	  <= 0;
 							load_data 		  <= 0;
 							load_block_instr  <= 1;
-							load_buf_delay    <= 0;
+							load_buf_delay	<= 0;
 							
 							state <= `CONTROLLER_STATE_GET_BLOCK_NUMBER;
 							ret_state <= `CONTROLLER_STATE_WRITE_BLOCK_INSTR;
@@ -133,7 +133,7 @@ module control_unit
 							load_reg_number	  <= 1;
 							load_data 		  <= 1;
 							load_block_instr  <= 0;
-							load_buf_delay    <= 0;
+							load_buf_delay	<= 0;
 							
 							state <= `CONTROLLER_STATE_GET_BLOCK_NUMBER;
 							ret_state <= `CONTROLLER_STATE_WRITE_BLOCK_REG;
@@ -144,7 +144,7 @@ module control_unit
 							load_reg_number	  <= 1;
 							load_data 		  <= 1;
 							load_block_instr  <= 0;
-							load_buf_delay    <= 0;
+							load_buf_delay	<= 0;
 							
 							state <= `CONTROLLER_STATE_GET_BLOCK_NUMBER;
 							ret_state <= `CONTROLLER_STATE_WRITE_BLOCK_REG;
@@ -160,7 +160,7 @@ module control_unit
 							load_reg_number	  <= 0;
 							load_data 		  <= 1;
 							load_block_instr  <= 0;
-							load_buf_delay    <= 1;
+							load_buf_delay	<= 1;
 							
 							state <= `CONTROLLER_STATE_GET_DATA;
 							ret_state <= `CONTROLLER_STATE_ALLOC_DELAY;
@@ -184,7 +184,7 @@ module control_unit
 							load_reg_number	  <= 0;
 							load_data 		  <= 1;
 							load_block_instr  <= 0;
-							load_buf_delay    <= 0;
+							load_buf_delay	<= 0;
 							
 							state <= `CONTROLLER_STATE_GET_DATA;
 							ret_state <= `CONTROLLER_STATE_SET_INPUT_GAIN;
@@ -195,7 +195,7 @@ module control_unit
 							load_reg_number	  <= 0;
 							load_data 		  <= 1;
 							load_block_instr  <= 0;
-							load_buf_delay    <= 0;
+							load_buf_delay	<= 0;
 							
 							state <= `CONTROLLER_STATE_GET_DATA;
 							ret_state <= `CONTROLLER_STATE_SET_OUTPUT_GAIN;

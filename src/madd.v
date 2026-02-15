@@ -25,8 +25,8 @@ module multiply_stage #(parameter data_width = 16, parameter n_blocks = 256)
 		input wire saturate_disable_in,
 		output reg saturate_disable_out,
 		
-		input wire signed [    data_width - 1 : 0] arg_a_in,
-		input wire signed [    data_width - 1 : 0] arg_b_in,
+		input wire signed [	data_width - 1 : 0] arg_a_in,
+		input wire signed [	data_width - 1 : 0] arg_b_in,
 		output reg signed [2 * data_width - 1 : 0] product_out,
 		
 		input wire signed [data_width - 1 : 0] arg_c_in,
@@ -284,7 +284,7 @@ module add_stage #(parameter data_width = 16, parameter n_blocks = 256)
 		input wire signedness_in,
 		
 		input wire signed [2 * data_width - 1 : 0] product_in,
-		input wire signed [    data_width - 1 : 0] arg_c_in,
+		input wire signed [	data_width - 1 : 0] arg_c_in,
 		
 		output reg signed [2 * data_width - 1 : 0] result_out,
 		

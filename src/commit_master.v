@@ -1,7 +1,6 @@
 `include "instr_dec.vh"
-
-`include "lut.vh"
 `include "core.vh"
+`include "lut.vh"
 
 
 module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
@@ -50,16 +49,16 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 		end
 	end
 	
-    genvar i;
-    generate
+	genvar i;
+	generate
 		for (i = 0; i < `N_INSTR_BRANCHES; i = i + 1) begin : one_hot
 			assign in_ready[i] = (in_valid[i] && commit_id[i] == next_commit_id) & ~sample_tick;
 		end
-    endgenerate
-    
-    reg [`N_INSTR_BRANCHES - 1 : 0] in_ready_prev;
+	endgenerate
+	
+	reg [`N_INSTR_BRANCHES - 1 : 0] in_ready_prev;
 	reg acc_overwrite_prev;
-	reg [2 * data_width    - 1 : 0] result_prev [`N_INSTR_BRANCHES - 1 : 0];
+	reg [2 * data_width	- 1 : 0] result_prev [`N_INSTR_BRANCHES - 1 : 0];
 	reg [3 					   : 0] dest_prev	[`N_INSTR_BRANCHES - 1 : 0];
 
 	integer j;
