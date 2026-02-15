@@ -310,12 +310,36 @@ m_parameter *new_m_parameter_wni(const char *name, const char *name_internal, fl
 
 static float m_derived_quantity_compute_rec(m_derived_quantity *dq, m_parameter_pll *params, int depth)
 {
-	if (!dq) return 0.0;
+	printf("dq calc rec\n");
+	if (!dq)
+	{
+		printf("null ptr. ret 0\n");
+		return 0.0;
+	}
 	
 	if (dq->type == M_DERIVED_QUANTITY_REFERENCE)
 	{
 		if (!dq->val.ref_name || !params)
+		{
+			printf("null reference. ret 0\n");
 			return 0.0;
+		}
+		
+		if (strcmp(dq->val.ref_name, "pi") == 0)
+		{
+			printf("ret 3.14159\n");
+			return 3.14159265;
+		}
+		else if (strcmp(dq->val.ref_name, "e") == 0)
+		{
+			printf("ret 2.71828\n");
+			return 2.718281828459045;
+		}
+		else if (strcmp(dq->val.ref_name, "sample_rate") == 0)
+		{
+			printf("ret 44100\n");
+			return M_FPGA_SAMPLE_RATE;
+		}
 		
 		m_parameter_pll *current;
 		m_parameter *param;
@@ -330,7 +354,10 @@ static float m_derived_quantity_compute_rec(m_derived_quantity *dq, m_parameter_
 			if (param && param->name_internal)
 			{
 				if (strncmp(dq->val.ref_name, param->name_internal, cmplen) == 0)
+				{
+					printf("parameter %s = %f\n", param->name_internal, param->value);
 					return param->value;
+				}
 			}
 			
 			current = current->next;
@@ -341,80 +368,127 @@ static float m_derived_quantity_compute_rec(m_derived_quantity *dq, m_parameter_
 	
 	if (dq->type == M_DERIVED_QUANTITY_CONST_FLT)
 	{
+		printf("const. %f\n", dq->val.val_float);
 		return dq->val.val_float;
 	}
 	else if (dq->type == M_DERIVED_QUANTITY_CONST_INT)
 	{
+		printf("const. %d\n", dq->val.val_int);
 		return (float)dq->val.val_int;
 	}
 	
 	if (depth > DQ_MAX_RECURSION_DEPTH || !dq->val.sub_dqs)
+	{
+		printf("recursion overflowed. ret 0\n");
 		return 0.0;
+	}
 	
 	float x = 0.0;
 	float ret_val = 0.0;
 	
+	printf("type: %d\n", dq->type);
+	
 	switch (dq->type)
 	{
 		case M_DERIVED_QUANTITY_FCALL_ADD:
+			printf("+\n");
 			ret_val = (m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1) + m_derived_quantity_compute_rec(dq->val.sub_dqs[1], params, depth + 1));
 			break;
 
 		case M_DERIVED_QUANTITY_FCALL_SUB:
+			printf("-\n");
 			ret_val = m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1) - m_derived_quantity_compute_rec(dq->val.sub_dqs[1], params, depth + 1);
 			break;
 
 		case M_DERIVED_QUANTITY_FCALL_MUL:
+			printf("*\n");
 			ret_val = m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1) * m_derived_quantity_compute_rec(dq->val.sub_dqs[1], params, depth + 1);
 			break;
 
 		case M_DERIVED_QUANTITY_FCALL_DIV:
+			printf("/\n");
 			x = m_derived_quantity_compute_rec(dq->val.sub_dqs[1], params, depth + 1);
 			
 			if (fabsf(x) < 1e-20)
+			{
+				printf("division by zero. ret 0\n");
 				return 0.0; // avoid division by zero by just returning 0 lol. idk. what else to do?
+			}
 			
 			ret_val = m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1) / x;
 			break;
 
 		case M_DERIVED_QUANTITY_FCALL_ABS:
+			printf("abs\n");
 			ret_val = fabs(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
 			break;
 
-		case M_DERIVED_QUANTITY_FCALL_SQR: x = m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1); ret_val = x * x;
+		case M_DERIVED_QUANTITY_FCALL_SQR:
+			printf("sqr\n");
+			x = m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1); ret_val = x * x;
+			break;
+
+		case M_DERIVED_QUANTITY_FCALL_SQRT:
+			printf("sqrt\n");
+			ret_val = sqrt(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
 			break;
 
 		case M_DERIVED_QUANTITY_FCALL_EXP:
+			printf("exp\n");
 			ret_val = exp(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
 			break;
 
-		case M_DERIVED_QUANTITY_FCALL_LOG:
+		case M_DERIVED_QUANTITY_FCALL_LN:
+			printf("ln\n");
 			ret_val = log(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
 			break;
 
 		case M_DERIVED_QUANTITY_FCALL_POW:
+			printf("pow\n");
 			ret_val = pow(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1),
 						  m_derived_quantity_compute_rec(dq->val.sub_dqs[1], params, depth + 1));
 			break;
 		case M_DERIVED_QUANTITY_FCALL_SIN:
+			printf("sin\n");
 			ret_val = sin(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
+			break;
+			
+		case M_DERIVED_QUANTITY_FCALL_SINH:
+			printf("sinh\n");
+			ret_val = sinh(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
 			break;
 
 		case M_DERIVED_QUANTITY_FCALL_COS:
+			printf("cos\n");
 			ret_val = cos(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
+			break;
+			
+		case M_DERIVED_QUANTITY_FCALL_COSH:
+			printf("cosh\n");
+			ret_val = cosh(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
 			break;
 
 		case M_DERIVED_QUANTITY_FCALL_TAN:
+			printf("tan\n");
 			ret_val = tan(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
+			break;
+
+		case M_DERIVED_QUANTITY_FCALL_TANH:
+			printf("tanh\n");
+			ret_val = tanh(m_derived_quantity_compute_rec(dq->val.sub_dqs[0], params, depth + 1));
 			break;
 	}
 	
+	printf("ret %.07f\n", ret_val);
 	return ret_val;
 }
 
+
 float m_derived_quantity_compute(m_derived_quantity *dq, m_parameter_pll *params)
 {
-	return m_derived_quantity_compute_rec(dq, params, 0);
+	float val = m_derived_quantity_compute_rec(dq, params, 0);
+	printf("compute dq. result: %f\n", val);
+	return val;
 }
 
 int m_derived_quantity_references_param_rec(m_derived_quantity *dq, m_parameter *param, int depth)
@@ -1003,14 +1077,19 @@ m_derived_quantity *new_m_derived_quantity_from_string_rec(char *str, char **nex
 						dq->type = M_DERIVED_QUANTITY_FCALL_SQR;
 						unary_call = 1;
 					}
+					else if (strcmp(buf, "sqrt") == 0)
+					{
+						dq->type = M_DERIVED_QUANTITY_FCALL_SQRT;
+						unary_call = 1;
+					}
 					else if (strcmp(buf, "exp") == 0)
 					{
 						dq->type = M_DERIVED_QUANTITY_FCALL_EXP;
 						unary_call = 1;
 					}
-					else if (strcmp(buf, "log") == 0)
+					else if (strcmp(buf, "ln") == 0)
 					{
-						dq->type = M_DERIVED_QUANTITY_FCALL_LOG;
+						dq->type = M_DERIVED_QUANTITY_FCALL_LN;
 						unary_call = 1;
 					}
 					else if (strcmp(buf, "sin") == 0)
@@ -1018,12 +1097,27 @@ m_derived_quantity *new_m_derived_quantity_from_string_rec(char *str, char **nex
 						dq->type = M_DERIVED_QUANTITY_FCALL_SIN;
 						unary_call = 1;
 					}
+					else if (strcmp(buf, "sinh") == 0)
+					{
+						dq->type = M_DERIVED_QUANTITY_FCALL_SINH;
+						unary_call = 1;
+					}
 					else if (strcmp(buf, "cos") == 0)
 					{
 						dq->type = M_DERIVED_QUANTITY_FCALL_COS;
 						unary_call = 1;
 					}
+					else if (strcmp(buf, "cosh") == 0)
+					{
+						dq->type = M_DERIVED_QUANTITY_FCALL_COSH;
+						unary_call = 1;
+					}
 					else if (strcmp(buf, "tan") == 0)
+					{
+						dq->type = M_DERIVED_QUANTITY_FCALL_TAN;
+						unary_call = 1;
+					}
+					else if (strcmp(buf, "tanh") == 0)
 					{
 						dq->type = M_DERIVED_QUANTITY_FCALL_TAN;
 						unary_call = 1;
@@ -1109,6 +1203,7 @@ m_derived_quantity *new_m_derived_quantity_from_string_rec(char *str, char **nex
 	
 	return dq;
 }
+
 
 m_derived_quantity *new_m_derived_quantity_from_string(char *str)
 {
