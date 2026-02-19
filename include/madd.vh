@@ -1,0 +1,2 @@
+`define SHIFT_TYPE_ARSH 0
+`define SHIFT_TYPE_LSH  1

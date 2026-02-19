@@ -31,7 +31,8 @@ module dsp_pipeline #(
 		input wire instr_write,
 	
 		input wire [data_width - 1 : 0] ctrl_data,
-		input wire [2 * data_width - 1 : 0] buf_init_delay,
+		input wire [2 * data_width - 1 : 0] delay_size,
+		input wire [2 * data_width - 1 : 0] init_delay,
 		input wire reg_update,
 		input wire reg_write,
 		
@@ -131,9 +132,8 @@ module dsp_pipeline #(
 		.enable(1),
 		
 		.alloc_req  (alloc_delay),
-		.alloc_size ((buf_init_delay | (buf_init_delay >> 2) | (buf_init_delay >> 4)
-			| (buf_init_delay >> 8)) + 1),
-		.alloc_delay(buf_init_delay),
+		.alloc_size (delay_size),
+		.alloc_delay(init_delay),
 		
 		.read_req(delay_read_req),
 		.write_req(delay_write_req),

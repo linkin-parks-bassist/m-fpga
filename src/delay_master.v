@@ -176,7 +176,7 @@ module delay_master
 		input wire enable,
 		
 		input wire alloc_req,
-		input wire [	addr_width - 1 : 0] alloc_size,
+		input wire [2 * addr_width - 1 : 0] alloc_size,
 		input wire [2 * addr_width - 1 : 0] alloc_delay,
 		
 		input wire read_req,

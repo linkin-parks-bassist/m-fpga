@@ -1,6 +1,7 @@
 `include "instr_dec.vh"
-`include "lut.vh"
+`include "madd.vh"
 `include "core.vh"
+`include "lut.vh"
 
 `default_nettype none
 
@@ -67,6 +68,7 @@ module dsp_core #(
 	localparam mem_addr_w 		= $clog2(memory_size);
 	localparam ch_addr_w 		= $clog2(16);
 	localparam reg_addr_w		= $clog2(n_blocks) + 1;
+	localparam full_width		= 2 * data_width + 8;
 	
 	always @(posedge clk) begin
 		if (tick) sample_out <= channels[0];
@@ -229,9 +231,16 @@ module dsp_core #(
 			mem[mem_write_addr] <= mem_write_val;
 	end
 	
-	reg signed [2 * data_width - 1 : 0] accumulator;
+	reg signed [full_width - 1 : 0] accumulator;
+	wire [full_width - 1 : 0] abs_accumulator = (accumulator < 0) ? -accumulator : accumulator;
 	
-	wire signed [2 * data_width - 1 : 0] accumulator_write_val;
+	localparam signed [full_width - 1 : 0] sat_max = ( 1 << (2 * data_width - 1)) - 1;
+	localparam signed [full_width - 1 : 0] sat_min = (-1 << (2 * data_width - 1));
+	
+	wire signed [full_width - 1 : 0] acc_sat = accumulator < sat_min ? sat_min : ((accumulator > sat_max) ? sat_max : accumulator);
+	wire signed [data_width - 1 : 0] acc_norm = acc_sat[2 * data_width - 1 : data_width];
+	
+	wire signed [full_width - 1 : 0] accumulator_write_val;
 	wire accumulator_write_enable;
 	wire accumulator_add_enable;
 	
@@ -398,7 +407,6 @@ module dsp_core #(
 		.channel_write_val(channel_write_val),
 		.channel_write_enable(channel_write_enable),
 		
-		.accumulator_write_val(accumulator_write_val),
 		.accumulator_write_enable(accumulator_write_enable)
 	);
 	
@@ -406,7 +414,7 @@ module dsp_core #(
 	/* Branch Router */
 	/*****************/
 	
-	branch_router #(.data_width(data_width), .n_blocks(n_blocks)) router (
+	branch_router #(.data_width(data_width), .n_blocks(n_blocks), .full_width(full_width)) router (
 		.clk(clk),
 		.reset(reset | resetting),
 		
@@ -475,7 +483,7 @@ module dsp_core #(
 	/**************************/
 	/* Main arithmetic branch */
 	/**************************/
-	madd_pipeline #(.data_width(data_width), .n_blocks(n_blocks)) madd_branch (
+	madd_pipeline #(.data_width(data_width), .n_blocks(n_blocks), .full_width(full_width)) madd_branch (
 		.clk(clk),
 		.reset(reset | resetting),
 		
@@ -514,7 +522,7 @@ module dsp_core #(
 	/*********************************************/
 	/* MAC branch; the accumulator owning branch */
 	/*********************************************/
-	mac_pipeline #(.data_width(data_width), .n_blocks(n_blocks)) mac_branch (
+	mac_pipeline #(.data_width(data_width), .n_blocks(n_blocks), .full_width(full_width), .shift_type(`SHIFT_TYPE_LSH)) mac_branch (
 		.clk(clk),
 		.reset(reset | resetting),
 		
@@ -553,7 +561,7 @@ module dsp_core #(
 	/************************************************/
 	/* Misc branch; other operations, data movement */
 	/************************************************/
-	misc_branch #(.data_width(data_width), .n_blocks(n_blocks)) misc (
+	misc_branch #(.data_width(data_width), .n_blocks(n_blocks), .full_width(full_width)) misc (
 		.clk(clk),
 		.reset(reset | resetting),
 		
@@ -595,7 +603,7 @@ module dsp_core #(
 	/**********/
 	/* Delays */
 	/**********/
-	resource_branch #(.data_width(data_width), .handle_width(8), .n_blocks(n_blocks)) delay_stage (
+	resource_branch #(.data_width(data_width), .handle_width(8), .n_blocks(n_blocks), .full_width(full_width)) delay_stage (
 		.clk(clk),
 		.reset(reset | resetting),
 		
@@ -640,7 +648,7 @@ module dsp_core #(
 	/********/
 	/* LUTs */
 	/********/
-	resource_branch #(.data_width(data_width), .handle_width(8)) lut_stage (
+	resource_branch #(.data_width(data_width), .handle_width(8), .full_width(full_width)) lut_stage (
 		.clk(clk),
 		.reset(reset | resetting),
 		
@@ -685,7 +693,7 @@ module dsp_core #(
 	/**********/
 	/* Memory */
 	/**********/
-	resource_branch #(.data_width(data_width), .handle_width(8)) mem_stage (
+	resource_branch #(.data_width(data_width), .handle_width(8), .full_width(full_width)) mem_stage (
 		.clk(clk),
 		.reset(reset | resetting),
 		
@@ -752,7 +760,7 @@ module dsp_core #(
 	/*****************/
 	/* Commit master */
 	/*****************/
-	commit_master #(.data_width(data_width), .n_blocks(n_blocks)) commit_master (
+	commit_master #(.data_width(data_width), .n_blocks(n_blocks), .full_width(full_width)) commit_master (
 		.clk(clk),
 		.reset(reset | resetting),
 		
@@ -869,7 +877,7 @@ module dsp_core #(
 	wire [7 : 0] res_addr_out_router;
 	wire [`COMMIT_ID_WIDTH - 1 : 0] commit_id_out_router;
 	wire commit_flag_out_router;
-	wire signed [2 * data_width - 1 : 0] accumulator_out_router;
+	wire signed [full_width - 1 : 0] accumulator_out_router;
 	assign out_ready_router[0] = in_ready_madd;
 	assign out_ready_router[1] = in_ready_mac;
 	assign out_ready_router[2] = in_ready_misc;
@@ -889,20 +897,20 @@ module dsp_core #(
 	wire in_ready_delay;
 	wire [data_width - 1 : 0] arg_a_out_delay;
 	wire [data_width - 1 : 0] arg_b_out_delay;
-	wire [2 * data_width - 1 : 0] result_out_delay;
+	wire [full_width - 1 : 0] result_out_delay;
 	wire [`COMMIT_ID_WIDTH - 1 : 0] commit_id_out_delay;
 	
 	
 	// LUT Branch
 	wire in_ready_lut;
-	wire [	  data_width - 1 : 0] arg_a_out_lut;
-	wire [	  data_width - 1 : 0] arg_b_out_lut;
-	wire [2 * data_width - 1 : 0] result_out_lut;
+	wire [data_width - 1 : 0] arg_a_out_lut;
+	wire [data_width - 1 : 0] arg_b_out_lut;
+	wire [full_width - 1 : 0] result_out_lut;
 	
 	// Memory branch
-	wire [    data_width   - 1 : 0] arg_a_out_mem;
-	wire [    data_width   - 1 : 0] arg_b_out_mem;
-	wire [2 * data_width   - 1 : 0] result_out_mem;
+	wire [data_width   - 1 : 0] arg_a_out_mem;
+	wire [data_width   - 1 : 0] arg_b_out_mem;
+	wire [full_width   - 1 : 0] result_out_mem;
 	wire [`COMMIT_ID_WIDTH - 1 : 0] commit_id_out_mem;
 	wire mem_read_req;
 	reg  mem_read_valid;
@@ -925,8 +933,8 @@ module dsp_core #(
 	wire [`N_INSTR_BRANCHES - 1 : 0] out_valid_commit_stage;
 	wire [$clog2(n_blocks)  - 1 : 0] block_out_final_stages [`N_INSTR_BRANCHES - 1 : 0];
 	wire [$clog2(n_blocks)  - 1 : 0] block_out_commit_stage [`N_INSTR_BRANCHES - 1 : 0];
-	wire [2 * data_width    - 1 : 0] result_final_stages	[`N_INSTR_BRANCHES - 1 : 0];
-	wire [2 * data_width    - 1 : 0] result_commit_stage	[`N_INSTR_BRANCHES - 1 : 0];
+	wire [full_width    - 1 : 0] result_final_stages	[`N_INSTR_BRANCHES - 1 : 0];
+	wire [full_width    - 1 : 0] result_commit_stage	[`N_INSTR_BRANCHES - 1 : 0];
 	wire [3					 	: 0] dest_final_stages		[`N_INSTR_BRANCHES - 1 : 0];
 	wire [3					 	: 0] dest_commit_stage		[`N_INSTR_BRANCHES - 1 : 0];
 	wire [`COMMIT_ID_WIDTH  - 1 : 0] commit_id_final_stages	[`N_INSTR_BRANCHES - 1 : 0];

@@ -2,7 +2,7 @@
 `include "lut.vh"
 `include "core.vh"
 
-module resource_branch #(parameter data_width = 16, parameter handle_width = 8, parameter n_blocks = 256) (
+module resource_branch #(parameter data_width = 16, parameter handle_width = 8, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8) (
 		input wire clk,
 		input wire reset,
 		
@@ -37,7 +37,7 @@ module resource_branch #(parameter data_width = 16, parameter handle_width = 8, 
 		input wire [3:0] dest_in,
 		output reg [3:0] dest_out,
 		
-		output reg signed [2 * data_width - 1 : 0] result_out,
+		output reg signed [full_width - 1 : 0] result_out,
 		
 		input wire [`COMMIT_ID_WIDTH - 1 : 0] commit_id_in,
 		output reg [`COMMIT_ID_WIDTH - 1 : 0] commit_id_out

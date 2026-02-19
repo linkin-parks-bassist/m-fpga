@@ -1,4 +1,4 @@
-module commit_stage #(parameter data_width = 16, parameter n_blocks = 256)
+module commit_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
@@ -14,8 +14,8 @@ module commit_stage #(parameter data_width = 16, parameter n_blocks = 256)
 		input  wire [$clog2(n_blocks) - 1 : 0] block_in,
 		output wire [$clog2(n_blocks) - 1 : 0] block_out,
 		
-		input  wire signed [2 * data_width - 1 : 0] result_in,
-		output wire signed [2 * data_width - 1 : 0] result_out,
+		input  wire signed [full_width - 1 : 0] result_in,
+		output wire signed [full_width - 1 : 0] result_out,
 		
 		input  wire [3:0] dest_in,
 		output wire [3:0] dest_out,
@@ -27,7 +27,7 @@ module commit_stage #(parameter data_width = 16, parameter n_blocks = 256)
 		output wire commit_flag_out
 	);
 	
-	localparam payload_width = $clog2(n_blocks) + 2 * data_width + 4 + 9 + 1;
+	localparam payload_width = $clog2(n_blocks) + full_width + 4 + `COMMIT_ID_WIDTH + 1;
 
 	wire [payload_width - 1 : 0] skid_payload_in = 
 		{block_in, result_in, dest_in, commit_id_in, commit_flag_in};

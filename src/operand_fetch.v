@@ -526,9 +526,6 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		input  wire commit_flag_in,
 		output wire commit_flag_out,
 		
-		input  wire signed [2 * data_width - 1 : 0] accumulator_in,
-		output wire signed [2 * data_width - 1 : 0] accumulator_out,
-
 		input  wire [`N_INSTR_BRANCHES - 1 : 0] branch_in,
 		output wire [`N_INSTR_BRANCHES - 1 : 0] branch_out,
 		
@@ -538,7 +535,6 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		
 		input  wire signed [data_width - 1 : 0] channel_read_val,
 		
-		input  wire [2 * data_width - 1 : 0] accumulator_write_val,
 		input  wire accumulator_write_enable
 	);
 	

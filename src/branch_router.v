@@ -3,7 +3,7 @@
 `include "instr_dec.vh"
 `include "core.vh"
 
-module branch_router #(parameter data_width = 16, parameter n_blocks = 256, parameter n_block_regs = 2)
+module branch_router #(parameter data_width = 16, parameter n_blocks = 256, parameter n_block_regs = 2, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
@@ -64,8 +64,8 @@ module branch_router #(parameter data_width = 16, parameter n_blocks = 256, para
 		input wire commit_flag_in,
 		output reg commit_flag_out,
 		
-		input wire signed [2 * data_width - 1 : 0] accumulator_in,
-		output reg signed [2 * data_width - 1 : 0] accumulator_out,
+		input wire signed [full_width - 1 : 0] accumulator_in,
+		output reg signed [full_width - 1 : 0] accumulator_out,
 
 		input wire [`N_INSTR_BRANCHES - 1 : 0] branch
 	);

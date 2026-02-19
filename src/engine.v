@@ -55,7 +55,8 @@ module dsp_engine #(
 		.instr_write(pipeline_a_block_instr_write),
 	
 		.ctrl_data(ctrl_data_out),
-		.buf_init_delay(buf_init_delay),
+		.delay_size(delay_alloc_size),
+		.init_delay(delay_init_delay),
 		.reg_write(pipeline_a_block_reg_write),
 		.reg_write_ack(reg_write_acks[0]),
 		.reg_update(pipeline_a_block_reg_update),
@@ -92,7 +93,8 @@ module dsp_engine #(
 		.instr_write(pipeline_b_block_instr_write),
 	
 		.ctrl_data(ctrl_data_out),
-		.buf_init_delay(buf_init_delay),
+		.delay_size(delay_alloc_size),
+		.init_delay(delay_init_delay),
 		.reg_write(pipeline_b_block_reg_write),
 		.reg_update(pipeline_b_block_reg_update),
 		
@@ -191,7 +193,8 @@ module dsp_engine #(
 		.reg_writes_commit(reg_writes_commit),
 		
 		.alloc_delay(alloc_delay),
-		.buf_init_delay(buf_init_delay),
+		.delay_size_out(delay_alloc_size),
+		.init_delay_out(delay_init_delay),
 		
 		.swap_pipelines(swap_pipelines),
 		.pipelines_swapping(pipelines_swapping),
@@ -303,7 +306,7 @@ module dsp_engine #(
 	wire swap_pipelines;
 	wire controller_ready;
 
-	reg ctrl_inp_ready = 0;
+	reg  ctrl_inp_ready = 0;
 	wire ctrl_inp_req;
 	wire ctrl_inp_ack;
 
@@ -331,7 +334,8 @@ module dsp_engine #(
 	wire set_input_gain;
 	wire set_output_gain;
 	
-	wire [2 * data_width - 1 : 0] buf_init_delay;
+	wire [2 * data_width - 1 : 0] delay_alloc_size;
+	wire [2 * data_width - 1 : 0] delay_init_delay;
 	
 	wire pipeline_a_block_instr_write 	= block_instr_write		[current_pipeline];
 	wire pipeline_a_block_reg_write 	= block_reg_write  		[current_pipeline];

@@ -3,7 +3,7 @@
 `include "lut.vh"
 
 
-module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
+module commit_master #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
@@ -18,16 +18,16 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 		output logic [`N_INSTR_BRANCHES - 1 : 0] in_ready,
 		
 		input wire [$clog2(n_blocks)  - 1 : 0] block_in		[`N_INSTR_BRANCHES - 1 : 0],
-		input wire [2 * data_width 	  - 1 : 0] result		[`N_INSTR_BRANCHES - 1 : 0],
+		input wire [full_width	 	  - 1 : 0] result		[`N_INSTR_BRANCHES - 1 : 0],
 		input wire [3 					  : 0] dest			[`N_INSTR_BRANCHES - 1 : 0],
 		input wire [`COMMIT_ID_WIDTH  - 1 : 0] commit_id	[`N_INSTR_BRANCHES - 1 : 0],
 		input wire [`N_INSTR_BRANCHES - 1 : 0] commit_flag,
 		
 		output reg [3 : 0] channel_write_addr,
-		output reg [data_width - 1 : 0] channel_write_val,
+		output reg signed [data_width - 1 : 0] channel_write_val,
 		output reg channel_write_enable,
 		
-		output reg [2 * data_width - 1 : 0] accumulator_write_val,
+		output reg signed [full_width - 1 : 0] accumulator_write_val,
 		output reg accumulator_write_enable,
 		output reg accumulator_add_enable,
 		
@@ -35,19 +35,6 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 		
 		output reg [7 : 0] byte_probe
 	);
-	
-	always @(posedge clk) begin
-		if (reset) begin
-			byte_probe <= 0;
-		end else begin
-			byte_probe[0] <= |in_valid | byte_probe[0];
-			byte_probe[1] <= in_valid[0] | in_valid[0];
-			byte_probe[2] <= enable;
-			byte_probe[3] <= |(commit_id[0]) | |(commit_id[1]) | |(commit_id[2]) | |commit_id[3] | byte_probe[3];
-			byte_probe[4] <= commit_id[0][0] | byte_probe[4];
-			byte_probe[5] <= |in_ready | byte_probe[5];
-		end
-	end
 	
 	genvar i;
 	generate
@@ -58,8 +45,8 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256)
 	
 	reg [`N_INSTR_BRANCHES - 1 : 0] in_ready_prev;
 	reg acc_overwrite_prev;
-	reg [2 * data_width	- 1 : 0] result_prev [`N_INSTR_BRANCHES - 1 : 0];
-	reg [3 					   : 0] dest_prev	[`N_INSTR_BRANCHES - 1 : 0];
+	reg [full_width	- 1 : 0] result_prev [`N_INSTR_BRANCHES - 1 : 0];
+	reg [3 		        : 0] dest_prev	 [`N_INSTR_BRANCHES - 1 : 0];
 
 	integer j;
 	integer k;
