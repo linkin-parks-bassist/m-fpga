@@ -1,6 +1,8 @@
 `include "engine.vh"
 `include "core.vh"
 
+`default_nettype none
+
 module dsp_engine #(
 		parameter n_blocks 			= 255,
 		parameter data_width 		= 16,
@@ -68,11 +70,7 @@ module dsp_engine #(
 		.full_reset(pipeline_a_full_reset),
 		.enable(pipeline_a_enable),
 		
-		.resetting(pipeline_a_resetting),
-
-		.n_blocks_running(pipeline_n_blocks[0]),
-		.commits_accepted(pipeline_n_commits[0]),
-		.byte_probe(pipeline_byte_probe[0])
+		.resetting(pipeline_a_resetting)
 	);
 	
 	dsp_pipeline #(.data_width(data_width), .n_blocks(n_blocks)) pipeline_b (
@@ -105,11 +103,7 @@ module dsp_engine #(
 		.full_reset(pipeline_b_full_reset),
 		.enable(pipeline_b_enable),
 		
-		.resetting(pipeline_b_resetting),
-
-		.n_blocks_running(pipeline_n_blocks[1]),
-		.commits_accepted(pipeline_n_commits[1]),
-		.byte_probe(pipeline_byte_probe[1])
+		.resetting(pipeline_b_resetting)
 	);
 	
 	/**********************************************************/
@@ -203,10 +197,6 @@ module dsp_engine #(
 		.pipeline_full_reset(pipeline_full_reset),
 		.pipeline_resetting(pipeline_resetting),
 		.pipeline_enables(pipeline_enables),
-		.pipeline_n_blocks(pipeline_n_blocks),
-		.pipeline_n_commits(pipeline_n_commits),
-		.pipeline_byte_probe(pipeline_byte_probe),
-		
 		.set_input_gain(set_input_gain),
 		.set_output_gain(set_output_gain),
 		
@@ -297,8 +287,8 @@ module dsp_engine #(
 
 	reg pipeline_tick = 0;
 
-	wire [$clog2(n_blocks) 		- 1 : 0] block_target;
-	wire [$clog2(n_blocks) + `BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target;
+	wire [$clog2(n_blocks) - 1 : 0] block_target;
+	wire reg_target;
 
 	wire [data_width 		 - 1 : 0] ctrl_data_out;
 	wire [`BLOCK_INSTR_WIDTH - 1 : 0] ctrl_instr_out;
@@ -348,8 +338,6 @@ module dsp_engine #(
 	wire pipeline_a_resetting;
 	wire pipeline_a_reset	 			= pipeline_reset		[current_pipeline];
 
-	wire [$clog2(n_blocks) : 0] pipeline_a_n_blocks = pipeline_n_blocks	[current_pipeline];
-
 	wire pipeline_b_block_instr_write 	= block_instr_write		[~current_pipeline];
 	wire pipeline_b_block_reg_write 	= block_reg_write  		[~current_pipeline];
 	wire pipeline_b_block_reg_update 	= block_reg_update 		[~current_pipeline];
@@ -360,14 +348,10 @@ module dsp_engine #(
 	wire pipeline_b_full_reset 			= pipeline_full_reset	[~current_pipeline];
 	wire pipeline_b_resetting;
 	wire pipeline_b_reset	 			= pipeline_reset		[~current_pipeline];
-
-	wire [$clog2(n_blocks) : 0] pipeline_b_n_blocks = pipeline_n_blocks	[~current_pipeline];
 	
 	assign pipeline_resetting = {pipeline_b_resetting, pipeline_a_resetting};
 	assign pipeline_regfiles_syncing = {(current_pipeline) ? pipeline_a_regfile_syncing : pipeline_a_regfile_syncing,
 										(current_pipeline) ? pipeline_b_regfile_syncing : pipeline_a_regfile_syncing};
-	
-	wire [$clog2(n_blocks) - 1 : 0] pipeline_n_blocks [1:0];
-	wire [31 : 0] pipeline_n_commits [1:0];
-	wire [7  : 0] pipeline_byte_probe[1:0];
 endmodule
+
+`default_nettype wire

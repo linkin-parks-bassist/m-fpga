@@ -2,6 +2,7 @@
 `include "core.vh"
 `include "lut.vh"
 
+`default_nettype none
 
 module commit_master #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
@@ -94,3 +95,5 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256, para
 		end
 	end
 endmodule
+
+`default_nettype wire

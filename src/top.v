@@ -1,3 +1,5 @@
+`default_nettype none
+
 module top #(
 		parameter n_blocks 			= 255,
 		parameter data_width 		= 16,
@@ -50,14 +52,11 @@ module top #(
 	
 		.command_in(spi_in),
 		.command_in_valid(spi_in_valid),
-		.invalid_command(invalid_command),
-
-		.ready(engine_ready),
-	
-		.fifo_count(fifo_count),
 
 		.current_pipeline(current_pipeline)
 	);
+	
+	wire current_pipeline;
 	
 	wire reset = ~pll_lock;
 	
@@ -86,6 +85,8 @@ module top #(
 	
 	// SPI
 	wire [7:0] spi_in;
+	wire spi_in_valid;
+	
 	reg  [4:0] spi_byte_ctr = 0;
 
 	sync_spi_slave spi (
@@ -131,6 +132,7 @@ module top #(
 	/* I2S clocks */
 	reg mclk = 1'b0;
 	reg bclk = 1'b0;
+	wire lrclk;
 	
 	reg [2:0] mclk_ctr = 0;
 	reg [3:0] bclk_counter = 4'd0;
@@ -162,3 +164,5 @@ module top #(
 		end   
 	end
 endmodule
+
+`default_nettype wire

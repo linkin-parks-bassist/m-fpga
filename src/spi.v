@@ -7,6 +7,8 @@
  *
  */
 
+`default_nettype none
+
 module sync_spi_slave #(parameter CPOL = 0, parameter CPHA = 0)
 	(
 		input wire clk,
@@ -41,7 +43,7 @@ module sync_spi_slave #(parameter CPOL = 0, parameter CPHA = 0)
 	reg cs_sync	  = 1;
 	reg cs_sync_prev = 1;
 	
-	assign data_read = (sr_index == 7);
+	wire data_read = (sr_index == 7);
 	
 	reg [2:0] sr_index  = 3'b0;
 
@@ -87,3 +89,5 @@ module sync_spi_slave #(parameter CPOL = 0, parameter CPHA = 0)
 		sck_norm_prev <= sck_norm;
 	end
 endmodule
+
+`default_nettype wire

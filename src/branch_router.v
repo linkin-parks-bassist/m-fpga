@@ -1,7 +1,7 @@
-`default_nettype none
-
 `include "instr_dec.vh"
 `include "core.vh"
+
+`default_nettype none
 
 module branch_router #(parameter data_width = 16, parameter n_blocks = 256, parameter n_block_regs = 2, parameter full_width = 2 * data_width + 8)
 	(

@@ -1,3 +1,5 @@
+`default_nettype none
+
 module fifo_buffer #(parameter data_width = 8, parameter n = 16)
 	(
 		input wire clk,
@@ -59,3 +61,5 @@ module fifo_buffer #(parameter data_width = 8, parameter n = 16)
 		end
 	end
 endmodule
+
+`default_nettype wire

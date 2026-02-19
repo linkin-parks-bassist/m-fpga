@@ -1,3 +1,5 @@
+`default_nettype none
+
 module combinatorial_interp
 	#(
 		parameter data_width = 16,
@@ -120,3 +122,4 @@ module sequential_interp #(parameter data_width = 16, parameter interp_bits = 3)
 	end
 endmodule
 
+`default_nettype wire

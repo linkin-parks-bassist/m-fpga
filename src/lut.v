@@ -1,5 +1,7 @@
 `include "lut.vh"
 
+`default_nettype none
+
 module sin_2pi_lut_16 (
 		input wire clk,
 		input wire reset,
@@ -149,3 +151,4 @@ module tanh_4_lut_16 (
 	end
 endmodule
 
+`default_nettype wire

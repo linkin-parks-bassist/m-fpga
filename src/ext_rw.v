@@ -2,6 +2,8 @@
 `include "lut.vh"
 `include "core.vh"
 
+`default_nettype none
+
 module resource_branch #(parameter data_width = 16, parameter handle_width = 8, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8) (
 		input wire clk,
 		input wire reset,
@@ -107,3 +109,5 @@ module resource_branch #(parameter data_width = 16, parameter handle_width = 8, 
 		end
 	end
 endmodule
+
+`default_nettype wire

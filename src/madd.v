@@ -1,6 +1,6 @@
-`default_nettype none
-
 `include "madd.vh"
+
+`default_nettype none
 
 module multiply_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8)
 	(

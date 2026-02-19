@@ -1,6 +1,8 @@
 `define RR_ARBITER_STATE_READY 		0
 `define RR_ARBITER_STATE_WAIT 		1
 
+`default_nettype none
+
 module rr_arbiter
 	#(
 		parameter req_data_width = 16,
@@ -190,3 +192,4 @@ module rr_arbiter_handle
 	end
 endmodule
 	
+`default_nettype wire

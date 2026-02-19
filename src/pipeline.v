@@ -2,6 +2,8 @@
 `include "core.vh"
 `include "lut.vh"
 
+`default_nettype none
+
 `define PIPELINE_READY 			0
 `define PIPELINE_PROCESSING 	1
 `define PIPELINE_INVALID	 	2
@@ -146,7 +148,7 @@ module dsp_pipeline #(
 		.data_out(delay_read_data),
 		
 		.read_valid(delay_read_valid),
-		.write_ack(delay_write_ready)
+		.write_ack(delay_write_ack)
 	);
 	
 	/**********/
@@ -238,3 +240,4 @@ module dsp_pipeline #(
 endmodule
 
 
+`default_nettype wire

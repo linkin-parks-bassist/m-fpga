@@ -1,3 +1,5 @@
+`default_nettype none
+
 module commit_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
@@ -41,3 +43,5 @@ module commit_stage #(parameter data_width = 16, parameter n_blocks = 256, param
 		 .out_ready(out_ready), .out_valid(out_valid),
 		 .payload_in(skid_payload_in), .payload_out(skid_payload_out));
 endmodule
+
+`default_nettype wire

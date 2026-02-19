@@ -12,6 +12,8 @@
 `define MIXER_APPLY_OUTPUT_GAIN_DONE 	11
 `define MIXER_REST				 		12
 
+`default_nettype none
+
 module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 		input wire clk,
 		input wire reset,
@@ -223,3 +225,5 @@ module mixer #(parameter data_width = 16, parameter gain_shift = 4) (
 	end
 	
 endmodule
+
+`default_nettype wire

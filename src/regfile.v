@@ -1,3 +1,5 @@
+`default_nettype none
+
 module block_regfile #(parameter data_width = 16, parameter n_blocks = 256)
 	(
 		input wire clk,
@@ -115,3 +117,5 @@ module block_regfile #(parameter data_width = 16, parameter n_blocks = 256)
 	end
 	
 endmodule
+
+`default_nettype wire

@@ -10,7 +10,9 @@
 `define LUT_HANDLE_SIN	0
 `define LUT_HANDLE_TANH	1
 
-`define N_CORE_LUTS	1
+`define N_CORE_LUTS	2
+
+`default_nettype none
 
 module lut_master #(parameter data_width = 16) (
 		input wire clk,
@@ -192,3 +194,5 @@ module lut_master #(parameter data_width = 16) (
 	);
 	
 endmodule
+
+`default_nettype wire

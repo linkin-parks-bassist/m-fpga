@@ -1,5 +1,6 @@
-
 `include "instr_dec.vh"
+
+`default_nettype none
 
 module instr_decoder #(parameter data_width = 16)
 	(
@@ -114,3 +115,5 @@ module instr_decoder #(parameter data_width = 16)
 	assign misc_op = operation - `MISC_OPCODE_MIN;
 	
 endmodule
+
+`default_nettype wire

@@ -1,3 +1,5 @@
+`default_nettype none
+
 module skid_buffer #(parameter payload_width = 64)
 	(
 		input wire clk,
@@ -65,3 +67,5 @@ module skid_buffer #(parameter payload_width = 64)
 		end
 	end
 endmodule
+
+`default_nettype wire

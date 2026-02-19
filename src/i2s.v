@@ -1,3 +1,5 @@
+`default_nettype none
+
 module i2s_trx #(parameter sample_size = 16)
 (
 	input wire sys_clk,
@@ -62,3 +64,5 @@ module i2s_trx #(parameter sample_size = 16)
 		end
 	end
 endmodule
+
+`default_nettype wire

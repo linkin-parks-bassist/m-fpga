@@ -1,3 +1,5 @@
+`default_nettype none
+
 module delay_buffer_controller #(parameter data_width = 16, parameter addr_width = 16, parameter handle)
 	(
 		input wire clk,
@@ -442,3 +444,5 @@ module delay_master
 	end
 
 endmodule
+
+`default_nettype wire
