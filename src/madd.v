@@ -2,7 +2,7 @@
 
 `default_nettype none
 
-module multiply_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8)
+module multiply_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
@@ -90,7 +90,7 @@ module multiply_stage #(parameter data_width = 16, parameter n_blocks = 256, par
 	end
 endmodule
 
-module shift_stage_1 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8, parameter bit shift_type = `SHIFT_TYPE_ARSH)
+module shift_stage_1 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8, parameter bit shift_type = `SHIFT_TYPE_ARSH)
 	(
 		input wire clk,
 		input wire reset,
@@ -197,7 +197,7 @@ module shift_stage_1 #(parameter data_width = 16, parameter n_blocks = 256, para
 	end
 endmodule
 
-module shift_stage_2 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8, parameter bit shift_type = `SHIFT_TYPE_ARSH)
+module shift_stage_2 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8, parameter bit shift_type = `SHIFT_TYPE_ARSH)
 	(
 		input wire clk,
 		input wire reset,
@@ -286,7 +286,7 @@ module shift_stage_2 #(parameter data_width = 16, parameter n_blocks = 256, para
 	end
 endmodule
 
-module add_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8)
+module add_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
@@ -353,7 +353,7 @@ module add_stage #(parameter data_width = 16, parameter n_blocks = 256, paramete
 	end
 endmodule
 
-module saturate_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8)
+module saturate_stage #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
@@ -423,7 +423,7 @@ module saturate_stage #(parameter data_width = 16, parameter n_blocks = 256, par
 	end
 endmodule
 
-module mac_pipeline #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8, parameter bit shift_type = `SHIFT_TYPE_ARSH)
+module mac_pipeline #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8, parameter bit shift_type = `SHIFT_TYPE_ARSH)
 	(
 		input wire clk,
 		input wire reset,
@@ -638,7 +638,7 @@ module mac_pipeline #(parameter data_width = 16, parameter n_blocks = 256, param
 	
 endmodule
 
-module madd_pipeline #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8)
+module madd_pipeline #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,

@@ -2,7 +2,7 @@
 
 `default_nettype none
 
-module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8)
+module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
@@ -139,7 +139,7 @@ module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256
 	end
 endmodule
 
-module misc_branch_stage_2 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8)
+module misc_branch_stage_2 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
@@ -279,7 +279,7 @@ module misc_branch_stage_2 #(parameter data_width = 16, parameter n_blocks = 256
 endmodule
 
 
-module misc_branch_stage_3 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8)
+module misc_branch_stage_3 #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
@@ -388,7 +388,7 @@ module misc_branch_stage_3 #(parameter data_width = 16, parameter n_blocks = 256
 
 endmodule
 
-module misc_branch #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = full_width + 8)
+module misc_branch #(parameter data_width = 16, parameter n_blocks = 256, parameter full_width = 2 * data_width + 8)
 	(
 		input wire clk,
 		input wire reset,
