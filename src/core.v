@@ -339,7 +339,9 @@ module dsp_core #(
 		.n_blocks_running(n_blocks_running),
 		
 		.block_in(block_out_bfds),
+        `ifdef verilator
 		.block_out(block_out_ofs),
+        `endif
 		
 		.operation_in(operation_out_bfds),
 		.operation_out(operation_out_ofs),
@@ -428,8 +430,10 @@ module dsp_core #(
 		.out_valid(out_valid_router),
 		.out_ready(out_ready_router),
 		
+        `ifdef verilator
 		.block_in(block_out_ofs),
 		.block_out(block_out_router),
+        `endif
 
 		.operation_in(operation_out_ofs),
 		.operation_out(operation_out_router),
@@ -495,8 +499,10 @@ module dsp_core #(
 		.out_valid(out_valid_final_stages[`INSTR_BRANCH_MADD]),
 		.out_ready(in_ready_commit_stage[`INSTR_BRANCH_MADD]),
 		
+        `ifdef verilator
 		.block_in(block_out_router),
 		.block_out(block_out_final_stages[`INSTR_BRANCH_MADD]),
+        `endif
 		
 		.shift			 (shift_out_router),
 		.shift_disable	 (shift_disable_out_router),
@@ -534,8 +540,10 @@ module dsp_core #(
 		.out_valid(out_valid_final_stages[`INSTR_BRANCH_MAC]),
 		.out_ready(in_ready_commit_stage[`INSTR_BRANCH_MAC]),
 		
+        `ifdef verilator
 		.block_in(block_out_router),
 		.block_out(block_out_final_stages[`INSTR_BRANCH_MAC]),
+        `endif
 		
 		.shift				(shift_out_router),
 		.shift_disable		(shift_disable_out_router),
@@ -573,8 +581,10 @@ module dsp_core #(
 		.out_valid(out_valid_final_stages[`INSTR_BRANCH_MISC]),
 		.out_ready(in_ready_commit_stage[`INSTR_BRANCH_MISC]),
 		
+        `ifdef verilator
 		.block_in(block_out_router),
 		.block_out(block_out_final_stages[`INSTR_BRANCH_MISC]),
+        `endif
 		
 		.arg_a_in(arg_a_out_router),
 		.arg_b_in(arg_b_out_router),
@@ -615,8 +625,10 @@ module dsp_core #(
 		.out_valid(out_valid_final_stages[`INSTR_BRANCH_DELAY]),
 		.out_ready(in_ready_commit_stage[`INSTR_BRANCH_DELAY]),
 		
+        `ifdef verilator
 		.block_in(block_out_router),
 		.block_out(block_out_final_stages[`INSTR_BRANCH_DELAY]),
+        `endif
 		
 		.write(writes_external_out_router),
 		
@@ -660,8 +672,10 @@ module dsp_core #(
 		.out_valid(out_valid_final_stages[`INSTR_BRANCH_LUT]),
 		.out_ready(in_ready_commit_stage[`INSTR_BRANCH_LUT]),
 		
+        `ifdef verilator
 		.block_in(block_out_router),
 		.block_out(block_out_final_stages[`INSTR_BRANCH_LUT]),
+        `endif
 		
 		.write(0),
 		.handle_in(res_addr_out_router),
@@ -705,8 +719,10 @@ module dsp_core #(
 		.out_valid(out_valid_final_stages[`INSTR_BRANCH_MEM]),
 		.out_ready(in_ready_commit_stage[`INSTR_BRANCH_MEM]),
 		
+        `ifdef verilator
 		.block_in(block_out_router),
 		.block_out(block_out_final_stages[`INSTR_BRANCH_MEM]),
+        `endif
 		
 		.write(writes_external_out_router),
 		
@@ -748,8 +764,10 @@ module dsp_core #(
 				
 				  .in_valid(out_valid_final_stages[k]),  .in_ready(in_ready_commit_stage[k]), 
 				 .out_valid(out_valid_commit_stage[k]),  .out_ready(in_ready_commit_master[k]),
-				 
+                 
+                    `ifdef verilator
 						 .block_in(block_out_final_stages[k]),		 .block_out(block_out_commit_stage[k]),
+                    `endif
 						.result_in   (result_final_stages[k]),		.result_out   (result_commit_stage[k]),
 					  .dest_in		 (dest_final_stages[k]),				 .dest_out(dest_commit_stage[k]),
 					 .commit_id_in(commit_id_final_stages[k]),	 .commit_id_out(commit_id_commit_stage[k]),
@@ -772,7 +790,9 @@ module dsp_core #(
 		.in_valid(out_valid_commit_stage),
 		.in_ready(in_ready_commit_master),
 		
+        `ifdef verilator
 		.block_in(block_out_commit_stage),
+        `endif
 		
 		.result(result_commit_stage),
 		.dest(dest_commit_stage),
@@ -837,7 +857,9 @@ module dsp_core #(
 	// Operand fetch stage
 	wire out_ready_ofs;
 	wire out_valid_ofs;
+    `ifdef verilator
 	wire [$clog2(n_blocks) - 1 : 0] block_out_ofs;
+    `endif
 	wire [4 : 0] operation_out_ofs;
 	wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out_ofs;
 	wire [3 : 0] dest_out_ofs;
@@ -861,7 +883,9 @@ module dsp_core #(
 	wire in_ready_router;
 	wire [`N_INSTR_BRANCHES - 1 : 0] out_valid_router;
 	wire [`N_INSTR_BRANCHES - 1 : 0] out_ready_router;
+    `ifdef verilator
 	wire [$clog2(n_blocks)  - 1 : 0] block_out_router;
+    `endif
 	wire [4 : 0] operation_out_router;
 	wire [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_out_router;
 	wire [3 : 0] dest_out_router;
@@ -931,8 +955,10 @@ module dsp_core #(
 	// Commit stages
 	wire [`N_INSTR_BRANCHES - 1 : 0] out_valid_final_stages;
 	wire [`N_INSTR_BRANCHES - 1 : 0] out_valid_commit_stage;
+    `ifdef verilator
 	wire [$clog2(n_blocks)  - 1 : 0] block_out_final_stages [`N_INSTR_BRANCHES - 1 : 0];
 	wire [$clog2(n_blocks)  - 1 : 0] block_out_commit_stage [`N_INSTR_BRANCHES - 1 : 0];
+    `endif
 	wire [full_width    - 1 : 0] result_final_stages	[`N_INSTR_BRANCHES - 1 : 0];
 	wire [full_width    - 1 : 0] result_commit_stage	[`N_INSTR_BRANCHES - 1 : 0];
 	wire [3					 	: 0] dest_final_stages		[`N_INSTR_BRANCHES - 1 : 0];

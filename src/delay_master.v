@@ -55,24 +55,24 @@ module delay_buffer_controller #(parameter data_width = 16, parameter addr_width
 	
 	reg initialised;
 	
-	reg [	addr_width - 1 : 0] addr;
-	reg [	addr_width - 1 : 0] size;
-	reg [2 * data_width - 1 : 0] delay;
-	reg [	addr_width - 1 : 0] position;
+	reg [addr_width - 1 : 0] addr;
+	reg [addr_width - 1 : 0] size;
+	reg [addr_width + DELAY_FORMAT - 1 : 0] delay;
+	reg [addr_width - 1 : 0] position;
 	
 	reg wrapped;
 	
 	reg [2:0] state;
 	
-	wire [2 * data_width - 1 : 0] delay_offset = delay >> DELAY_FORMAT;
-	wire [	  addr_width - 1 : 0] delay_addr = (delay_offset > position) ? addr + position - delay_offset + size
+	wire [addr_width - 1 : 0] delay_offset = delay >> DELAY_FORMAT;
+	wire [addr_width - 1 : 0] delay_addr = (delay_offset > position) ? addr + position - delay_offset + size
 																		 : addr + position - delay_offset;
 	
-	reg [2 * data_width - 1 : 0] delay_inc_clamped;
+	reg [addr_width + DELAY_FORMAT - 1 : 0] delay_inc_clamped;
 	
-	wire 		[2 * data_width - 1 : 0] max_delay 	   = (size << DELAY_FORMAT);
-	wire signed [2 * data_width - 1 : 0] max_delay_inc = max_delay - delay;
-	wire signed [2 * data_width - 1 : 0] min_delay_inc = -delay;
+	wire 		[addr_width + DELAY_FORMAT - 1 : 0] max_delay 	   = (size << DELAY_FORMAT);
+	wire signed [addr_width + DELAY_FORMAT - 1 : 0] max_delay_inc = max_delay - delay;
+	wire signed [addr_width + DELAY_FORMAT - 1 : 0] min_delay_inc = -delay;
 	
 	always @(posedge clk) begin
 		if (reset) begin
@@ -98,10 +98,6 @@ module delay_buffer_controller #(parameter data_width = 16, parameter addr_width
 		end else if (enable) begin
 			invalid <= 0;
 			write_done <= 0;
-			
-			if (delay > max_delay) delay <= max_delay;
-			
-			if (max_delay[2 * data_width - 1]) delay <= -delay;
 			
 			case (state)
 				IDLE: begin

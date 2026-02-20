@@ -3,7 +3,7 @@
 module top #(
 		parameter n_blocks 			= 255,
 		parameter data_width 		= 16,
-		parameter spi_fifo_length	= 512
+		parameter spi_fifo_length	= 16
 	) (
 		`ifndef verilator
 		input wire crystal,

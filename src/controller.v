@@ -12,8 +12,6 @@ module control_unit
 	(
 		input wire clk,
 		input wire reset,
-
-		output wire [7:0] control_state,
 		
 		input wire [7:0] in_byte,
 		input wire in_valid,
@@ -50,12 +48,13 @@ module control_unit
 		output reg [7:0] spi_output
 	);
 	
-	reg [7:0] in_byte_latched = 0;
+    reg in_valid_r;
+	reg [7:0] in_byte_r;
+	reg [7:0] in_byte_latched;
 	reg [7:0] command = 0;
 	
 	localparam instr_n_bytes = `BLOCK_INSTR_WIDTH / 8;
 	
-	assign control_state = state;
 	reg [7:0] state = `CONTROLLER_STATE_READY;
 	reg [7:0] ret_state;
 
@@ -109,6 +108,9 @@ module control_unit
 		
 		set_input_gain  <= 0;
 		set_output_gain <= 0;
+
+        in_valid_r <= in_valid;
+        in_byte_r <= in_byte;
 		
 		if (reset) begin
 			state <= `CONTROLLER_STATE_READY;
@@ -118,12 +120,15 @@ module control_unit
 			
 			byte_ctr <= 0;
 			bytes_in <= 0;
+
+            in_valid_r <= 0;
+            in_byte_r <= 0;
 		end
 		else begin
 			case (state)
 				`CONTROLLER_STATE_READY: begin
-					if (in_valid) begin
-						command <= in_byte;
+					if (in_valid_r) begin
+						command <= in_byte_r;
 						wait_one <= 1;
 						next <= 1;
 						
@@ -132,7 +137,7 @@ module control_unit
 						byte_ctr <= 0;
 						bytes_in <= 0;
 						
-						case (in_byte)
+						case (in_byte_r)
 							`COMMAND_WRITE_BLOCK_INSTR: begin
 								bytes_needed <= block_bytes + instr_bytes;
 							end
@@ -194,8 +199,8 @@ module control_unit
 				end
 				
 				`CONTROLLER_STATE_LISTEN: begin
-					if (!wait_one && in_valid) begin
-						bytes_in <= (bytes_in << 8) | in_byte;
+					if (!wait_one && in_valid_r) begin
+						bytes_in <= (bytes_in << 8) | in_byte_r;
 						
 						if (byte_ctr == bytes_needed - 1)
 							state <= `CONTROLLER_STATE_ACT;
