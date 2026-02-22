@@ -204,7 +204,9 @@ module dsp_engine #(
 		
 		.invalid(invalid_command),
 		
-		.spi_output(out)
+		.spi_output(out),
+		
+		.control_state(out)
 	);
 	
 	/*******/
