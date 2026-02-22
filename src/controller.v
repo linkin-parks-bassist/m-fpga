@@ -25,7 +25,6 @@ module control_unit
 		
 		output reg [1:0] block_instr_write,
 		output reg [1:0] block_reg_write,
-		output reg [1:0] block_reg_update,
 		output reg [1:0] reg_writes_commit,
 		input wire [1:0] pipeline_regfiles_syncing,
 		output reg [1:0] alloc_delay,
@@ -56,10 +55,6 @@ module control_unit
 	localparam instr_n_bytes = `BLOCK_INSTR_WIDTH / 8;
 	
 	reg [7:0] state = `CONTROLLER_STATE_READY;
-	reg [7:0] ret_state;
-
-	wire [data_width - 1 + 8 : 0] data_out_in_byte  = {data_out, in_byte};
-	wire [`BLOCK_INSTR_WIDTH - 1 + 8 : 0] instr_out_in_byte = {instr_out, in_byte};
 	
 	reg load_block_number;
 	reg load_reg_number;
@@ -156,25 +151,21 @@ module control_unit
 							
 							`COMMAND_WRITE_BLOCK_REG_0: begin
 								block_target <= 0;
-								command <= `COMMAND_WRITE_BLOCK_REG;
 								bytes_needed <= block_bytes + data_bytes;
 							end
 							
 							`COMMAND_UPDATE_BLOCK_REG_0: begin
 								block_target <= 0;
-								command <= `COMMAND_UPDATE_BLOCK_REG;
 								bytes_needed <= block_bytes + data_bytes;
 							end
 							
 							`COMMAND_WRITE_BLOCK_REG_1: begin
 								block_target <= 1;
-								command <= `COMMAND_WRITE_BLOCK_REG;
 								bytes_needed <= block_bytes + data_bytes;
 							end
 							
 							`COMMAND_UPDATE_BLOCK_REG_1: begin
 								block_target <= 1;
-								command <= `COMMAND_UPDATE_BLOCK_REG;
 								bytes_needed <= block_bytes + data_bytes;
 							end
 							
@@ -190,7 +181,7 @@ module control_unit
 							end
 							
 							`COMMAND_RESET_PIPELINE: begin
-								pipeline_reset[target_pipeline_inst] <= 1;
+								pipeline_full_reset[target_pipeline_inst] <= 1;
 								state <= `CONTROLLER_STATE_READY;
 							end
 							
@@ -222,7 +213,6 @@ module control_unit
 						next <= 1;
 						wait_one <= 1;
 					end
-				
 				end
 				
 				`CONTROLLER_STATE_ACT: begin

@@ -53,8 +53,12 @@ module top #(
 		.command_in(spi_in),
 		.command_in_valid(spi_in_valid),
 
-		.current_pipeline(current_pipeline)
+		.current_pipeline(current_pipeline),
+		
+		.out(out)
 	);
+	
+	wire [7:0] out;
 	
 	wire current_pipeline;
 	
@@ -65,10 +69,10 @@ module top #(
 	/***********/
 
 	// Useful LED indicators (active low)
-	assign led0 = ~1;
-	assign led1 = ~current_pipeline;
-	assign led3 = ~0;
-	assign led5 = ~0;
+	assign led0 = ~out[0];
+	assign led1 = ~out[1];
+	assign led3 = ~out[2];
+	assign led5 = ~current_pipeline;
 
 	// I2S
 	wire sample_valid;
