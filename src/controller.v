@@ -92,6 +92,18 @@ module control_unit
 	wire [7:0] byte_4_in = bytes_in[39:32];
 	wire [7:0] byte_5_in = bytes_in[47:40];
 	
+	wire [8 * block_bytes - 1 : 0] instr_write_block;
+	wire [8 * block_bytes - 1 : 0] reg_write_block;
+	generate
+		if (block_bytes == 2) begin
+			assign instr_write_block = {byte_5_in, byte_4_in};
+			assign reg_write_block = {byte_3_in, byte_2_in};
+		end else begin
+			assign instr_write_block = byte_4_in;
+			assign reg_write_block = byte_2_in;
+		end
+	endgenerate
+	
 	always @(posedge clk) begin
 		reg_writes_commit <= 0;
 		wait_one <= 0;
@@ -211,10 +223,7 @@ module control_unit
 				`CONTROLLER_STATE_ACT: begin
 					case (command)
 						`COMMAND_WRITE_BLOCK_INSTR: begin
-							if (block_bytes == 2)
-								block_target <= {byte_5_in, byte_4_in};
-							else
-								block_target <= byte_4_in;
+							block_target <= instr_write_block;
 							
 							instr_out 	 <= {byte_3_in, byte_2_in, byte_1_in, byte_0_in};
 							block_instr_write[target_pipeline] <= 1;
@@ -224,10 +233,7 @@ module control_unit
 
 						`COMMAND_WRITE_BLOCK_REG: begin
 							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
-								if (block_bytes == 2)
-									block_target <= {byte_3_in, byte_2_in};
-								else
-									block_target <= byte_2_in;
+								block_target <= reg_write_block;
 								
 								data_out <= {byte_1_in, byte_0_in};
 								block_reg_write[target_pipeline] <= 1;
@@ -237,10 +243,7 @@ module control_unit
 						
 						`COMMAND_UPDATE_BLOCK_REG: begin
 							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
-								if (block_bytes == 2)
-									block_target <= {byte_3_in, byte_2_in};
-								else
-									block_target <= byte_2_in;
+								block_target <= reg_write_block;
 								
 								data_out <= {byte_1_in, byte_0_in};
 								block_reg_write[target_pipeline] <= 1;
@@ -249,8 +252,8 @@ module control_unit
 						end
 
 						`COMMAND_ALLOC_DELAY: begin
-							delay_size_out <= {byte_5_in, byte_4_in, byte_3_in};
-							init_delay_out <= {byte_2_in, byte_1_in, byte_0_in};
+							delay_size_out <= {8'd0, byte_5_in, byte_4_in, byte_3_in};
+							init_delay_out <= {8'd0, byte_2_in, byte_1_in, byte_0_in};
 							alloc_delay[target_pipeline] <= 1;
 							state <= `CONTROLLER_STATE_READY;
 						end

@@ -76,8 +76,8 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 		input wire commit_flag_in,
 		output reg commit_flag_out,
 
-		input wire [`N_INSTR_BRANCHES - 1 : 0] branch_in,
-		output reg [`N_INSTR_BRANCHES - 1 : 0] branch_out,
+		input wire [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch_in,
+		output reg [$clog2(`N_INSTR_BRANCHES) - 1 : 0] branch_out,
 		
 		input wire [3 : 0] channel_write_addr,
 		input wire signed [data_width - 1 : 0] channel_write_val,
@@ -985,7 +985,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 	);
 	
 	localparam payload_width = 
-		$clog2(n_blocks)+data_width+data_width+2+$clog2(`N_MISC_OPS)+4+data_width+data_width+data_width+data_width+2+5+1+8+4+9+1+`N_INSTR_BRANCHES;
+		$clog2(n_blocks)+data_width+data_width+5+$clog2(`N_MISC_OPS)+4+data_width+data_width+data_width+1+1+5+1+8+1+1+1+$clog2(`N_INSTR_BRANCHES)+6;
 	
 	wire in_ready_skid;
 	

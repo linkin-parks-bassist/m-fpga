@@ -64,6 +64,7 @@ module dsp_engine #(
 		.reg_update(pipeline_a_block_reg_update),
 		
 		.reg_writes_commit(pipeline_a_reg_writes_commit),
+		.regfile_syncing(pipeline_b_regfile_syncing),
 	
 		.alloc_delay(pipeline_a_alloc_delay),
 		
@@ -97,6 +98,7 @@ module dsp_engine #(
 		.reg_update(pipeline_b_block_reg_update),
 		
 		.reg_writes_commit(pipeline_b_reg_writes_commit),
+		.regfile_syncing(pipeline_a_regfile_syncing),
 	
 		.alloc_delay(pipeline_b_alloc_delay),
 

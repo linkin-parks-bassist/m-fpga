@@ -137,7 +137,7 @@ module top #(
 	reg [2:0] mclk_ctr = 0;
 	reg [3:0] bclk_counter = 4'd0;
 	
-	reg [5:0] lrclk_counter = 5'd0;
+	reg [5:0] lrclk_counter = 6'd0;
 	assign lrclk = lrclk_counter[5];
 	
 	assign mclk_out  = mclk;
