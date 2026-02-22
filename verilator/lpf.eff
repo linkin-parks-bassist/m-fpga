@@ -1,0 +1,38 @@
+v1.0
+
+.INFO
+
+name: "Butterworth LPF"
+
+
+.PARAMETERS
+
+cutoff: (name: "Cutoff", default: 400, min: 60, max: 22050, units: "Hz", scale = "logarithmic")
+
+.RESOURCES
+
+x1: (type: "mem")
+x2: (type: "mem")
+y1: (type: "mem")
+y2: (type: "mem")
+
+.CODE
+
+mem_read c1 $x1
+mem_read c2 $x2
+mem_read c3 $y1
+mem_read c4 $y2
+
+macz [((1 - cos((2 * pi * cutoff) / sample_rate)) / 2) / (1 + (sin((2 * pi * cutoff) / sample_rate) / sqrt(2))) ]	c0
+mac  [(1 - cos((2 * pi * cutoff) / sample_rate)) / (1 + (sin((2 * pi * cutoff) / sample_rate) / sqrt(2)))		]	c1
+mac  [((1 - cos((2 * pi * cutoff) / sample_rate)) / 2) / (1 + (sin((2 * pi * cutoff) / sample_rate) / sqrt(2))) ]	c2
+mac  [(2 * cos((2 * pi * cutoff) / sample_rate)) / (1 + (sin((2 * pi * cutoff) / sample_rate) / sqrt(2)))		]	c3
+mac  [((sin((2 * pi * cutoff) / sample_rate) / sqrt(2)) - 1) / (1 + (sin((2 * pi * cutoff) / sample_rate) / sqrt(2)))] 	c4
+
+mem_write $x2 c1
+mem_write $x1 c0
+mem_write $y2 c3
+
+mov_acc c0
+
+mem_write $y1 c0

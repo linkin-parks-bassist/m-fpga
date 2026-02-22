@@ -26,8 +26,8 @@ module dsp_pipeline #(
 		
 		output wire error,
 		
-		input wire [$clog2(n_blocks) 	  - 1 : 0] block_target,
-		input wire [$clog2(n_blocks) + `BLOCK_REG_ADDR_WIDTH - 1 : 0] reg_target,
+		input wire [$clog2(n_blocks) - 1 : 0] block_target,
+		input wire reg_target,
 	
 		input wire [`BLOCK_INSTR_WIDTH - 1 : 0] instr_val,
 		input wire instr_write,
@@ -39,6 +39,7 @@ module dsp_pipeline #(
 		input wire reg_write,
 		
 		input wire reg_writes_commit,
+		output wire regfile_syncing,
 		
 		output wire reg_write_ack,
 		output wire instr_write_ack,
@@ -98,6 +99,7 @@ module dsp_pipeline #(
 		.delay_write_ack (delay_write_ack),
 		
 		.reg_writes_commit(reg_writes_commit),
+		.regfile_syncing(regfile_syncing),
 		
 		.full_reset(full_reset),
 		.resetting(resetting)
