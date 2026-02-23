@@ -19,10 +19,15 @@ module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256
 		output reg [$clog2(n_blocks) - 1 : 0] block_out,
 		
 		input wire signed [data_width - 1 : 0] arg_a_in,
+		output reg signed [data_width - 1 : 0] arg_a_out,
 		input wire signed [data_width - 1 : 0] arg_b_in,
+		output reg signed [data_width - 1 : 0] arg_b_out,
 		input wire signed [data_width - 1 : 0] arg_c_in,
+		output reg signed [data_width - 1 : 0] arg_c_out,
 		
 		input wire signed [full_width - 1 : 0] accumulator_in,
+		output reg signed [full_width - 1 : 0] accumulator_out,
+		
 		
 		input wire [8 : 0] operation_in,
 		input wire [4 : 0] operation_out,
@@ -106,6 +111,11 @@ module misc_branch_stage_1 #(parameter data_width = 16, parameter n_blocks = 256
 
 				block_out <= block_in;
 				
+				arg_a_out <= arg_a_in;
+				arg_b_out <= arg_b_in;
+				arg_c_out <= arg_c_in;
+				accumulator_out <= accumulator_in;
+				
 				acc_shift_out <= accumulator_in >>> (data_width - 1);
 				
 				upper_acc_out <= accumulator_in[2 * data_width - 1 : data_width];
@@ -156,10 +166,14 @@ module misc_branch_stage_2 #(parameter data_width = 16, parameter n_blocks = 256
 		output reg [$clog2(n_blocks) - 1 : 0] block_out,
 		
 		input wire signed [data_width - 1 : 0] arg_a_in,
+		output reg signed [data_width - 1 : 0] arg_a_out,
 		input wire signed [data_width - 1 : 0] arg_b_in,
+		output reg signed [data_width - 1 : 0] arg_b_out,
 		input wire signed [data_width - 1 : 0] arg_c_in,
+		output reg signed [data_width - 1 : 0] arg_c_out,
 		
 		input wire signed [full_width - 1 : 0] accumulator_in,
+		output reg signed [full_width - 1 : 0] accumulator_out,
 		
 		input wire [8 : 0] operation_in,
 		input wire [4 : 0] operation_out,
@@ -247,6 +261,11 @@ module misc_branch_stage_2 #(parameter data_width = 16, parameter n_blocks = 256
 				
 				misc_op_out <= misc_op_in;
 
+				arg_a_out <= arg_a_in;
+				arg_b_out <= arg_b_in;
+				arg_c_out <= arg_c_in;
+				accumulator_out <= accumulator_in;
+
 				block_out <= block_in;
 				
 				acc_shift_out <= acc_shift_in;
@@ -333,8 +352,8 @@ module misc_branch_stage_3 #(parameter data_width = 16, parameter n_blocks = 256
 		output reg commit_flag_out
 	);
 	
-	localparam signed [full_width - 1 : 0] sat_max = ( 1 << (2 * data_width - 1)) - 1;
-	localparam signed [full_width - 1 : 0] sat_min = (-1 << (2 * data_width - 1));
+	localparam signed [full_width - 1 : 0] sat_max = ( 1 << (data_width - 1)) - 1;
+	localparam signed [full_width - 1 : 0] sat_min = (-1 << (data_width - 1));
 	
 	assign in_ready = ~out_valid | out_ready;
 	
@@ -443,6 +462,10 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256, parame
 	wire signed [full_width - 1 : 0] acc_shift_1_out;
 	wire signed [full_width - 1 : 0] upper_acc_1_out;
 	wire signed [full_width - 1 : 0] lower_acc_1_out;
+	wire signed [full_width - 1 : 0] accumulator_1_out;
+	wire signed [data_width - 1 : 0] arg_a_1_out;
+	wire signed [data_width - 1 : 0] arg_b_1_out;
+	wire signed [data_width - 1 : 0] arg_c_1_out;
 	wire signed [data_width - 1 : 0] abs_1_out;
 	wire signed [data_width - 1 : 0] min_1_out;
 	wire signed [data_width - 1 : 0] max_1_out;
@@ -560,11 +583,11 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256, parame
 		.block_in(block_1_out),
 		.block_out(block_2_out),
 		
-		.arg_a_in(arg_a_in),
-		.arg_b_in(arg_b_in),
-		.arg_c_in(arg_c_in),
+		.arg_a_in(arg_a_1_out),
+		.arg_b_in(arg_b_1_out),
+		.arg_c_in(arg_c_1_out),
 		
-		.accumulator_in(accumulator_in),
+		.accumulator_in(accumulator_1_out),
 		
 		.operation_in(operation_1_out),
 		.operation_out(operation_2_out),
@@ -600,7 +623,7 @@ module misc_branch #(parameter data_width = 16, parameter n_blocks = 256, parame
 		
 		.saturate_disable_in(saturate_disable_in),
 		.saturate_disable_out(saturate_disable_2_out),
-		.shift_in(shift_in),
+		.shift_in(shift_1_out),
 		.shift_out(shift_2_out),
 		
 		.dest_in (dest_1_out),

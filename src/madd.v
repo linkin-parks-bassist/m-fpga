@@ -176,9 +176,9 @@ module shift_stage_1 #(parameter data_width = 16, parameter n_blocks = 256, para
 				saturate_disable_out 	<= saturate_disable_in;
 				signedness_out 			<= signedness_in;
 				
-				rounding_bit <= product_in[shift_in - 1] & ~shift_disable_in;
+				rounding_bit <= (shift_in == 0) ? 0 : (product_in[shift_in - 1] & ~shift_disable_in);
 				
-				if (shift_in > 15) 		   product_out <= product_in[full_width - 1];
+				if (shift_in > 15) 		   product_out <= 0;
 				else if (shift_disable_in) product_out <= product_in;
 				else 					   product_out <= sh2;
 				
