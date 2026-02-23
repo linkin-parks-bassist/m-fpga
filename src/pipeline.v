@@ -127,13 +127,13 @@ module dsp_pipeline #(
 	// Delay buffers
 	delay_master #(
 		.data_width(data_width), 
-		.n_buffers(8),
+		.n_buffers(1),
 		.memory_size(8192)
 	) delays (
 		.clk(clk),
 		.reset(reset | full_reset),
 		
-		.enable(1),
+		.enable(0),
 		
 		.alloc_req  (alloc_delay),
 		.alloc_size (delay_size),

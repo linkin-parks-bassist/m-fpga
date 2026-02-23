@@ -184,7 +184,6 @@ module dsp_engine #(
 		
 		.block_instr_write(block_instr_write),
 		.block_reg_write(block_reg_write),
-		.block_reg_update(block_reg_update),
 		
 		.reg_writes_commit(reg_writes_commit),
 		
@@ -203,8 +202,6 @@ module dsp_engine #(
 		.set_output_gain(set_output_gain),
 		
 		.invalid(invalid_command),
-		
-		.spi_output(out),
 		
 		.control_state(out)
 	);
