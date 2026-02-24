@@ -938,7 +938,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		.dest_in(dest_2_out),
 		.dest_out(dest_3_out),
 
-		.arg_needed(arg_c_needed_2_out),
+		.arg_needed(arg_c_needed_2),
 		
 		.src(src_c_2),
 		.src_reg(src_c_reg_2),

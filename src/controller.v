@@ -232,7 +232,7 @@ module control_unit
 							wait_one <= 1;
 						end
 
-						`COMMAND_WRITE_BLOCK_REG: begin
+						`COMMAND_WRITE_BLOCK_REG_0: begin
 							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
 								block_target <= reg_write_block;
 								
@@ -242,7 +242,27 @@ module control_unit
 							end
 						end
 						
-						`COMMAND_UPDATE_BLOCK_REG: begin
+						`COMMAND_UPDATE_BLOCK_REG_0: begin
+							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
+								block_target <= reg_write_block;
+								
+								data_out <= {byte_1_in, byte_0_in};
+								block_reg_write[target_pipeline] <= 1;
+								state <= READY;
+							end
+						end
+
+						`COMMAND_WRITE_BLOCK_REG_1: begin
+							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
+								block_target <= reg_write_block;
+								
+								data_out <= {byte_1_in, byte_0_in};
+								block_reg_write[target_pipeline] <= 1;
+								state <= READY;
+							end
+						end
+						
+						`COMMAND_UPDATE_BLOCK_REG_1: begin
 							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
 								block_target <= reg_write_block;
 								

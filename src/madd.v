@@ -327,7 +327,7 @@ module add_stage #(parameter data_width = 16, parameter n_blocks = 256, paramete
 	wire take_in  =  in_ready & in_valid;
 	wire take_out = out_valid & out_ready;
 	
-	wire signed [full_width - 1 : 0] arg_c_ext = {{(data_width){signedness_in & arg_c_in[data_width-1]}}, arg_c_in};
+	wire signed [full_width - 1 : 0] arg_c_ext = {{(full_width - data_width){signedness_in & arg_c_in[data_width-1]}}, arg_c_in};
 	
 	wire signed [full_width - 1 : 0] result = product_in + arg_c_ext;
 
@@ -389,8 +389,8 @@ module saturate_stage #(parameter data_width = 16, parameter n_blocks = 256, par
 	wire take_in  =  in_ready & in_valid;
 	wire take_out = out_valid & out_ready;
 	
-	localparam signed [full_width - 1 : 0] sat_max = ( 1 << (2 * data_width - 1)) - 1;
-	localparam signed [full_width - 1 : 0] sat_min = (-1 << (2 * data_width - 1));
+	localparam signed [full_width - 1 : 0] sat_max = ( 1 << (data_width - 1)) - 1;
+	localparam signed [full_width - 1 : 0] sat_min = (-1 << (data_width - 1));
 	
 	wire signed [full_width - 1 : 0] result_in_sat = (result_in > sat_max) ? sat_max : ((result_in < sat_min) ? sat_min : result_in);
 

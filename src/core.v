@@ -648,7 +648,7 @@ module dsp_core #(
 		.write_req(delay_write_req),
 		
 		.read_valid(delay_read_valid),
-		.write_ack(1),
+		.write_ack(delay_write_ack),
 		
 		.data_in(delay_read_data),
 		.result_out(result_final_stages[`INSTR_BRANCH_DELAY]),

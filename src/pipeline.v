@@ -51,7 +51,7 @@ module dsp_pipeline #(
 
 		output wire [$clog2(n_blocks) - 1 : 0] n_blocks_running,
 		output wire [31:0] commits_accepted,
-		output wire [7 : 0] byte_probe
+		output wire [ 7:0] byte_probe
 	);
 	
 	/*******************/
@@ -125,15 +125,46 @@ module dsp_pipeline #(
 	);
 	
 	// Delay buffers
+	localparam delay_mem_size = 8192;
+	localparam delay_mem_addr_width = $clog2(delay_mem_size);
+	reg [data_width - 1 : 0] delay_mem [delay_mem_size - 1 : 0];
+	
+	wire delay_mem_read_req;
+	wire delay_mem_write_req;
+	
+	always @(posedge clk) begin
+		delay_mem_write_ack <= 0;
+		delay_mem_read_valid <= 0;
+		
+		delay_mem_data_out <= delay_mem[delay_mem_read_addr];
+		
+		if (delay_mem_write_req) begin
+			delay_mem[delay_mem_write_addr] <= delay_mem_data_in;
+			delay_mem_write_ack <= 1;
+		end
+		
+		if (delay_mem_read_req)
+			delay_mem_read_valid <= 1;
+	end
+	
+	wire [delay_mem_addr_width - 1 : 0] delay_mem_read_addr;
+	reg  signed    [data_width - 1 : 0] delay_mem_data_out;
+	
+	wire [delay_mem_addr_width - 1 : 0] delay_mem_write_addr;
+	wire signed    [data_width - 1 : 0] delay_mem_data_in;
+	
+	reg delay_mem_read_valid;
+	reg delay_mem_write_ack;
+	
 	delay_master #(
 		.data_width(data_width), 
-		.n_buffers(1),
+		.n_buffers(3),
 		.memory_size(8192)
 	) delays (
 		.clk(clk),
 		.reset(reset | full_reset),
 		
-		.enable(0),
+		.enable(1),
 		
 		.alloc_req  (alloc_delay),
 		.alloc_size (delay_size),
@@ -150,7 +181,19 @@ module dsp_pipeline #(
 		.data_out(delay_read_data),
 		
 		.read_valid(delay_read_valid),
-		.write_ack(delay_write_ack)
+		.write_ack(delay_write_ack),
+		
+		.mem_read_req(delay_mem_read_req),
+		.mem_write_req(delay_mem_write_req),
+		
+		.mem_read_addr(delay_mem_read_addr),
+		.mem_data_in(delay_mem_data_out),
+		
+		.mem_write_addr(delay_mem_write_addr),
+		.mem_data_out(delay_mem_data_in),
+		
+		.mem_read_valid(delay_mem_read_valid),
+		.mem_write_ack(delay_mem_write_ack)
 	);
 	
 	/**********/
