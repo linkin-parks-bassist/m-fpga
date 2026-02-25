@@ -42,7 +42,7 @@ module delay_master #(parameter data_width  = 16,
 		output reg invalid_write,
 		output reg invalid_alloc,
 		
-		output wire [$clog2(n_buffers + 1) - 1 : 0] n_buffers_active
+		output wire any_buffers
 	);
 	
 	localparam DELAY_FORMAT = 8;
@@ -50,7 +50,7 @@ module delay_master #(parameter data_width  = 16,
 	localparam delay_width  = addr_width + DELAY_FORMAT;
 	localparam handle_width = $clog2(n_buffers);
 	
-	assign n_buffers_active = n_buffers_allocd;
+	assign any_buffers = |n_buffers_allocd;
 	
 	localparam IDLE 	 	= 3'd0;
 	localparam WRITE_1		= 3'd1;

@@ -66,8 +66,21 @@ module dsp_core #(
 		output wire [7:0] out
 	);
 	
-	assign out = {5'b0, delay_read_req, delay_write_req};
+	assign out = {5'd0, any_delay_acks, any_delay_reqs, in_ready_delay};
 	
+    reg any_delay_reqs;
+    reg any_delay_acks;
+
+    always @(posedge clk) begin
+        if (reset | full_reset) begin
+            any_delay_reqs <= 0;
+            any_delay_acks <= 0;
+        end else if (enable) begin
+            any_delay_reqs <= any_delay_reqs | delay_read_req | delay_write_req;
+            any_delay_acks <= any_delay_acks | delay_read_valid | delay_write_ack;
+        end
+    end
+
 	localparam block_addr_w 	= $clog2(n_blocks);
 	localparam mem_addr_w 		= $clog2(memory_size);
 	localparam ch_addr_w 		= $clog2(16);

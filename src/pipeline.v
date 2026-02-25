@@ -53,11 +53,15 @@ module dsp_pipeline #(
 		output wire [31:0] commits_accepted,
 		output wire [ 7:0] byte_probe
 	);
+
+    assign byte_probe = {byte_probe[4:0], any_delay_mem_reqs, any_delay_reqs, any_delay_buffers};
 	
 	/*******************/
 	/* Processing core */
 	/*******************/
 	
+    wire [7:0] core_out;
+
 	dsp_core #(
 		.data_width(data_width),
 		.n_blocks(n_blocks)
@@ -104,7 +108,7 @@ module dsp_pipeline #(
 		.full_reset(full_reset),
 		.resetting(resetting),
 		
-		.out(byte_probe)
+		.out(core_out)
 	);
 	
 	/************************/
@@ -158,6 +162,21 @@ module dsp_pipeline #(
 	reg delay_mem_read_valid;
 	reg delay_mem_write_ack;
 	
+    wire any_delay_buffers;
+
+    reg any_delay_mem_reqs;
+    reg any_delay_reqs;
+
+    always @(posedge clk) begin
+        if (reset | full_reset) begin
+            any_delay_mem_reqs <= 0;
+            any_delay_reqs <= 0;
+        end else if (enable) begin
+            any_delay_mem_reqs <= any_delay_mem_reqs | delay_mem_read_req | delay_mem_write_req;
+            any_delay_reqs <= any_delay_reqs | delay_read_req | delay_write_req;
+        end
+    end
+
 	delay_master #(
 		.data_width(data_width), 
 		.n_buffers(16),
@@ -166,13 +185,13 @@ module dsp_pipeline #(
 		.clk(clk),
 		.reset(reset | full_reset),
 		
-		.enable(1),
+		.enable(1'b1),
 		
 		.alloc_req  (alloc_delay),
-		.alloc_size (delay_size),
+		.alloc_size (delay_size[delay_mem_addr_width-1:0]),
 		.alloc_delay(init_delay),
 		
-		.read_req(delay_read_req),
+		.read_req (delay_read_req),
 		.write_req(delay_write_req),
 		
 		.write_handle(delay_req_handle),
@@ -185,17 +204,19 @@ module dsp_pipeline #(
 		.read_valid(delay_read_valid),
 		.write_ack(delay_write_ack),
 		
-		.mem_read_req(delay_mem_read_req),
+		.mem_read_req (delay_mem_read_req),
 		.mem_write_req(delay_mem_write_req),
 		
 		.mem_read_addr(delay_mem_read_addr),
-		.mem_data_in(delay_mem_data_out),
+		.mem_data_in  (delay_mem_data_out),
 		
 		.mem_write_addr(delay_mem_write_addr),
-		.mem_data_out(delay_mem_data_in),
+		.mem_data_out  (delay_mem_data_in),
 		
 		.mem_read_valid(delay_mem_read_valid),
-		.mem_write_ack(delay_mem_write_ack)
+		.mem_write_ack (delay_mem_write_ack),
+
+        .any_buffers(any_delay_buffers)
 	);
 	
 	/**********/
