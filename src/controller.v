@@ -204,11 +204,6 @@ module control_unit
 								state <= SWAP_WAIT;
 							end
 							
-							`COMMAND_RESET_PIPELINE: begin
-								pipeline_full_reset[target_pipeline_inst] <= 1;
-								state <= READY;
-							end
-							
 							`COMMAND_SET_INPUT_GAIN: begin
 								bytes_needed <= data_bytes;
 							end
@@ -219,6 +214,10 @@ module control_unit
 							
 							`COMMAND_COMMIT_REG_UPDATES: begin
 								reg_writes_commit[target_pipeline_inst] <= 1;
+								state <= READY;
+							end
+							
+							default: begin
 								state <= READY;
 							end
 						endcase
