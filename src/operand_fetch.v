@@ -348,6 +348,7 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 					
 					fetched_out <= single_cycle_result;
 					
+					accumulator_needed_out <= accumulator_needed_in;
 					saturate_disable_out <= saturate_disable_in;
 					signedness_out 		 <= signedness_in;
 					shift_out 			 <= shift_in;
@@ -422,11 +423,13 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 					fetched_out <= arg_latched;
 					
 					saturate_disable_out <= saturate_disable_latched;
+					accumulator_needed_out <= accumulator_needed_latched;
 					signedness_out 		 <= signedness_latched;
 					shift_out 			 <= shift_latched;
 					shift_disable_out 	 <= shift_disable_latched;
 					res_addr_out 		 <= res_addr_latched;
 					commit_flag_out		 <= commit_flag_latched;
+					
 					
 					writes_channel_out   	<= writes_channel_latched;
 					writes_external_out  	<= writes_external_latched;
@@ -951,7 +954,7 @@ module operand_fetch_stage #(parameter data_width = 16, parameter n_blocks = 256
 		.signedness_in(signedness_2_out),
 		.signedness_out(signedness_3_out),
 		
-		.accumulator_needed_in(accumulator_needed_in),
+		.accumulator_needed_in(accumulator_needed_2_out),
 
 		.shift_in(shift_2_out),
 		.shift_out(shift_3_out),
