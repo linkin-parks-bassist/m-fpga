@@ -52,8 +52,8 @@ module control_unit
 	
 	localparam instr_n_bytes = `BLOCK_INSTR_WIDTH / 8;
 	
-	reg [7:0] state = READY;
-    assign control_state = {bytes_in[1:0], bytes_needed[1:0], state[3:0]};
+	reg [2:0] state = READY;
+    assign control_state = {5'b0, state[2:0]};
 
 	reg load_block_number;
 	reg load_reg_number;
@@ -97,11 +97,11 @@ module control_unit
 		end
 	endgenerate
 	
-    localparam READY      = 8'd0;
-    localparam LISTEN     = 8'd1;
-    localparam EXECUTE    = 8'd2;
-    localparam SWAP_WAIT  = 8'd3;
-    localparam RESET_WAIT = 8'd4;
+    localparam READY      = 3'd0;
+    localparam LISTEN     = 3'd1;
+    localparam EXECUTE    = 3'd2;
+    localparam SWAP_WAIT  = 3'd3;
+    localparam RESET_WAIT = 3'd4;
 
 	wire front_pipeline = current_pipeline;
 	wire back_pipeline = ~current_pipeline;
