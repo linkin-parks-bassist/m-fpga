@@ -54,7 +54,7 @@ module dsp_pipeline #(
 		output wire [ 7:0] byte_probe
 	);
 
-    assign byte_probe = {byte_probe[4:0], any_delay_mem_reqs, any_delay_reqs, any_delay_buffers};
+    assign byte_probe = core_out;
 	
 	/*******************/
 	/* Processing core */

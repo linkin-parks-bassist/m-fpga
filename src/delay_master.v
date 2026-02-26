@@ -165,10 +165,10 @@ module delay_master #(parameter data_width  = 16,
 				buffer_initd[n_buffers_allocd] <= 1;
 				n_buffers_allocd <= n_buffers_allocd + 1;
 				
+                buf_info_write_data <= '0;
 				buf_info_write_data[buf_info_width                  - 1 : buf_info_width -     addr_width              ] <= alloc_addr;
 				buf_info_write_data[buf_info_width - 1 * addr_width - 1 : buf_info_width - 2 * addr_width              ] <= alloc_size_wm;
 				buf_info_write_data[buf_info_width - 2 * addr_width - 1 : buf_info_width - 2 * addr_width - delay_width] <= alloc_delay_wm;
-				buf_info_write_data[addr_width + data_width + 1 : 0] <= 0;
 				
 				buf_info_write_handle <= n_buffers_allocd;
 				buf_info_write_enable <= 1;

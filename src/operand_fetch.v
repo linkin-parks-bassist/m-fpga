@@ -94,7 +94,6 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 	integer j;
 	always @(posedge clk) begin
 		if (reset) begin
-			channels[0] = 1;
 			for (j = 1; j < 16; j = j + 1) begin
 				channels[j] = 0;
 			end
@@ -116,7 +115,8 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 			channels_scoreboard[i] <= channels_scoreboard[i];
 	
 		if (reset) begin
-			for (i = 0; i < 16; i = i + 1)
+			channels_scoreboard[0] <= 1;
+			for (i = 1; i < 16; i = i + 1)
 				channels_scoreboard[i] <= 0;
 			
 			accumulator_pending_writes <= 0;

@@ -29,7 +29,7 @@ module dsp_engine #(
 		output wire [7:0] out
 	);
 
-	assign out = {4'b0, pipelines_swapping | (|pipeline_resetting), control_state[2:0]};
+	assign out = current_pipeline ? byte_probe_b : byte_probe_a;
 
 	/*******/
 	/*******/
@@ -41,7 +41,7 @@ module dsp_engine #(
 	/* Dual DSP piplines for atomic, artifact-free runtime DSP reconfiguration */
 	/***************************************************************************/
 	
-    wire [7:0] bute_probe = current_pipeline ? byte_probe_b : byte_probe_a;
+    wire [7:0] byte_probe = current_pipeline ? byte_probe_b : byte_probe_a;
 	wire [7:0] byte_probe_a;
 	wire [7:0] byte_probe_b;
 	
