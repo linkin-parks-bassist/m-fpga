@@ -103,10 +103,15 @@ module control_unit
     localparam SWAP_WAIT  = 8'd3;
     localparam RESET_WAIT = 8'd4;
 
+	wire front_pipeline = current_pipeline;
+	wire back_pipeline = ~current_pipeline;
+
     reg [15 : 0] total_bytes;
     
     reg [31:0] timeout_ctr;
     reg timeout;
+    
+    reg programming;
 
 	always @(posedge clk) begin
 		reg_writes_commit <= 0;
@@ -127,16 +132,6 @@ module control_unit
 		set_output_gain <= 0;
 
         timeout <= 0;
-        
-		if (state != LISTEN || in_valid) begin
-			timeout_ctr <= 0;
-		end else begin
-			if (timeout_ctr == `CONTROLLER_TIMEOUT_CYCLES - 1)
-				timeout <= 1;
-			else
-				timeout_ctr <= timeout_ctr + 1;
-		end
-
 		
 		if (reset) begin
 			timeout_ctr <= 0;
@@ -150,10 +145,23 @@ module control_unit
 			pipeline_full_reset <= 2'b11;
 
             total_bytes <= 0;
+            
+            programming <= 0;
 		end else if (timeout) begin
-			state <= READY;
+			pipeline_full_reset[back_pipeline] <= 1;
+			programming <= 0;
 			timeout_ctr <= 0;
+			state <= RESET_WAIT;
 		end else begin
+			if (!programming || in_valid) begin
+				timeout_ctr <= 0;
+			end else begin
+				if (timeout_ctr == `CONTROLLER_TIMEOUT_CYCLES - 1)
+					timeout <= 1;
+				else
+					timeout_ctr <= timeout_ctr + 1;
+			end
+		
 			case (state)
 				READY: begin
 					if (!wait_one && in_valid) begin
@@ -169,22 +177,40 @@ module control_unit
                         total_bytes <= total_bytes + 1;
 						
 						case (in_byte)
+							`COMMAND_BEGIN_PROGRAM: begin
+								programming <= 1;
+								state <= READY;
+							end
+						
 							`COMMAND_WRITE_BLOCK_INSTR: begin
 								bytes_needed <= block_bytes + instr_bytes;
+								
+								if (!programming) state <= READY;
 							end
 							
 							`COMMAND_WRITE_BLOCK_REG_0: begin
 								reg_target <= 0;
 								bytes_needed <= block_bytes + data_bytes;
+								
+								if (!programming) state <= READY;
+							end
+							
+							
+							`COMMAND_WRITE_BLOCK_REG_1: begin
+								reg_target <= 1;
+								bytes_needed <= block_bytes + data_bytes;
+								
+								if (!programming) state <= READY;
+							end
+							
+							`COMMAND_ALLOC_DELAY: begin
+								bytes_needed <= 2 * delay_addr_bytes;
+								
+								if (!programming) state <= READY;
 							end
 							
 							`COMMAND_UPDATE_BLOCK_REG_0: begin
 								reg_target <= 0;
-								bytes_needed <= block_bytes + data_bytes;
-							end
-							
-							`COMMAND_WRITE_BLOCK_REG_1: begin
-								reg_target <= 1;
 								bytes_needed <= block_bytes + data_bytes;
 							end
 							
@@ -193,15 +219,23 @@ module control_unit
 								bytes_needed <= block_bytes + data_bytes;
 							end
 							
-							`COMMAND_ALLOC_DELAY: begin
-								bytes_needed <= 2 * delay_addr_bytes;
+							`COMMAND_COMMIT_REG_UPDATES: begin
+								reg_writes_commit[front_pipeline] <= 1;
+								state <= READY;
 							end
 							
-							`COMMAND_SWAP_PIPELINES: begin
-								swap_pipelines  	 <= 1;
-								reg_writes_commit[1] <= 1;
-								pipeline_enables[1]  <= 1;
-								state <= SWAP_WAIT;
+							`COMMAND_END_PROGRAM: begin
+								if (programming) begin
+									programming    <= 0;
+									swap_pipelines <= 1;
+									
+									reg_writes_commit[back_pipeline] <= 1;
+									pipeline_enables [back_pipeline] <= 1;
+									
+									state <= SWAP_WAIT;
+								end else begin
+									state <= READY;
+								end
 							end
 							
 							`COMMAND_SET_INPUT_GAIN: begin
@@ -210,11 +244,6 @@ module control_unit
 							
 							`COMMAND_SET_OUTPUT_GAIN: begin
 								bytes_needed <= data_bytes;
-							end
-							
-							`COMMAND_COMMIT_REG_UPDATES: begin
-								reg_writes_commit[target_pipeline_inst] <= 1;
-								state <= READY;
 							end
 							
 							default: begin
@@ -244,47 +273,27 @@ module control_unit
 							block_target <= instr_write_block;
 							
 							instr_out 	 <= {byte_3_in, byte_2_in, byte_1_in, byte_0_in};
-							block_instr_write[target_pipeline] <= 1;
+							block_instr_write[back_pipeline] <= 1;
 							state <= READY;
 							wait_one <= 1;
 						end
 
 						`COMMAND_WRITE_BLOCK_REG_0: begin
-							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
+							if (!pipelines_swapping && !pipeline_regfiles_syncing[back_pipeline]) begin
 								block_target <= reg_write_block;
 								
 								data_out <= {byte_1_in, byte_0_in};
-								block_reg_write[target_pipeline] <= 1;
+								block_reg_write[back_pipeline] <= 1;
 								state <= READY;
 							end
 						end
 						
-						`COMMAND_UPDATE_BLOCK_REG_0: begin
-							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
-								block_target <= reg_write_block;
-								
-								data_out <= {byte_1_in, byte_0_in};
-								block_reg_write[target_pipeline] <= 1;
-								state <= READY;
-							end
-						end
-
 						`COMMAND_WRITE_BLOCK_REG_1: begin
-							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
+							if (!pipelines_swapping && !pipeline_regfiles_syncing[back_pipeline]) begin
 								block_target <= reg_write_block;
 								
 								data_out <= {byte_1_in, byte_0_in};
-								block_reg_write[target_pipeline] <= 1;
-								state <= READY;
-							end
-						end
-						
-						`COMMAND_UPDATE_BLOCK_REG_1: begin
-							if (!pipelines_swapping && !pipeline_regfiles_syncing[target_pipeline]) begin
-								block_target <= reg_write_block;
-								
-								data_out <= {byte_1_in, byte_0_in};
-								block_reg_write[target_pipeline] <= 1;
+								block_reg_write[back_pipeline] <= 1;
 								state <= READY;
 							end
 						end
@@ -292,10 +301,30 @@ module control_unit
 						`COMMAND_ALLOC_DELAY: begin
 							delay_size_out <= {8'd0, byte_5_in, byte_4_in, byte_3_in};
 							init_delay_out <= {8'd0, byte_2_in, byte_1_in, byte_0_in};
-							alloc_delay[target_pipeline] <= 1;
+							alloc_delay[back_pipeline] <= 1;
 							state <= READY;
 						end
 
+						`COMMAND_UPDATE_BLOCK_REG_0: begin
+							if (!pipelines_swapping && !pipeline_regfiles_syncing[front_pipeline]) begin
+								block_target <= reg_write_block;
+								
+								data_out <= {byte_1_in, byte_0_in};
+								block_reg_write[front_pipeline] <= 1;
+								state <= READY;
+							end
+						end
+
+						`COMMAND_UPDATE_BLOCK_REG_1: begin
+							if (!pipelines_swapping && !pipeline_regfiles_syncing[front_pipeline]) begin
+								block_target <= reg_write_block;
+								
+								data_out <= {byte_1_in, byte_0_in};
+								block_reg_write[front_pipeline] <= 1;
+								state <= READY;
+							end
+						end
+						
 						`COMMAND_SET_INPUT_GAIN: begin
 							data_out <= {byte_1_in, byte_0_in};
 							set_input_gain <= 1;
@@ -313,8 +342,8 @@ module control_unit
 				SWAP_WAIT: begin
 					if (!wait_one && !pipelines_swapping) begin
 						current_pipeline 		<= ~current_pipeline;
-						pipeline_full_reset[1] 	<= 1;
-						pipeline_enables[1] 	<= 0;
+						pipeline_full_reset[front_pipeline] <= 1;
+						pipeline_enables   [front_pipeline] <= 0;
 						
 						wait_one <= 1;
 						state <= RESET_WAIT;
@@ -322,7 +351,7 @@ module control_unit
 				end
 				
 				RESET_WAIT: begin
-					if (!wait_one && pipeline_resetting == 2'b00) begin
+					if (!wait_one && pipeline_resetting[back_pipeline]) begin
 						state <= READY;
 					end
 				end

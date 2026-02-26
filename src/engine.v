@@ -339,31 +339,30 @@ module dsp_engine #(
 	wire [2 * data_width - 1 : 0] delay_alloc_size;
 	wire [2 * data_width - 1 : 0] delay_init_delay;
 	
-	wire pipeline_a_block_instr_write 	= block_instr_write		[current_pipeline];
-	wire pipeline_a_block_reg_write 	= block_reg_write  		[current_pipeline];
-	wire pipeline_a_block_reg_update 	= block_reg_update 		[current_pipeline];
-	wire pipeline_a_reg_writes_commit 	= reg_writes_commit 	[current_pipeline];
+	wire pipeline_a_block_instr_write 	= block_instr_write		[0];
+	wire pipeline_a_block_reg_write 	= block_reg_write  		[0];
+	wire pipeline_a_block_reg_update 	= block_reg_update 		[0];
+	wire pipeline_a_reg_writes_commit 	= reg_writes_commit 	[0];
 	wire pipeline_a_regfile_syncing;
-	wire pipeline_a_alloc_delay 		= alloc_delay 			[current_pipeline];
-	wire pipeline_a_enable 				= pipeline_enables 		[current_pipeline];
-	wire pipeline_a_full_reset 			= pipeline_full_reset	[current_pipeline];
+	wire pipeline_a_alloc_delay 		= alloc_delay 			[0];
+	wire pipeline_a_enable 				= pipeline_enables 		[0];
+	wire pipeline_a_full_reset 			= pipeline_full_reset	[0];
 	wire pipeline_a_resetting;
-	wire pipeline_a_reset	 			= pipeline_reset		[current_pipeline];
+	wire pipeline_a_reset	 			= pipeline_reset		[0];
 
-	wire pipeline_b_block_instr_write 	= block_instr_write		[~current_pipeline];
-	wire pipeline_b_block_reg_write 	= block_reg_write  		[~current_pipeline];
-	wire pipeline_b_block_reg_update 	= block_reg_update 		[~current_pipeline];
-	wire pipeline_b_reg_writes_commit 	= reg_writes_commit 	[~current_pipeline];
+	wire pipeline_b_block_instr_write 	= block_instr_write		[1];
+	wire pipeline_b_block_reg_write 	= block_reg_write  		[1];
+	wire pipeline_b_block_reg_update 	= block_reg_update 		[1];
+	wire pipeline_b_reg_writes_commit 	= reg_writes_commit 	[1];
 	wire pipeline_b_regfile_syncing;
-	wire pipeline_b_alloc_delay 		= alloc_delay 			[~current_pipeline];
-	wire pipeline_b_enable 				= pipeline_enables 		[~current_pipeline];
-	wire pipeline_b_full_reset 			= pipeline_full_reset	[~current_pipeline];
+	wire pipeline_b_alloc_delay 		= alloc_delay 			[1];
+	wire pipeline_b_enable 				= pipeline_enables 		[1];
+	wire pipeline_b_full_reset 			= pipeline_full_reset	[1];
 	wire pipeline_b_resetting;
-	wire pipeline_b_reset	 			= pipeline_reset		[~current_pipeline];
+	wire pipeline_b_reset	 			= pipeline_reset		[1];
 	
 	assign pipeline_resetting = {pipeline_b_resetting, pipeline_a_resetting};
-	assign pipeline_regfiles_syncing = {(current_pipeline) ? pipeline_a_regfile_syncing : pipeline_a_regfile_syncing,
-										(current_pipeline) ? pipeline_b_regfile_syncing : pipeline_a_regfile_syncing};
+	assign pipeline_regfiles_syncing = {pipeline_b_regfile_syncing, pipeline_a_regfile_syncing};
 endmodule
 
 `default_nettype wire
