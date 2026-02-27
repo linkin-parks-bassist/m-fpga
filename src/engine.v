@@ -26,7 +26,9 @@ module dsp_engine #(
 
 		output wire current_pipeline,
 
-		output wire [7:0] out
+		output wire [7:0] out,
+		
+		output wire [7:0] spi_byte_out
 	);
 
 	assign out = control_state;
@@ -150,6 +152,32 @@ module dsp_engine #(
 		.current_pipeline(current_pipeline)
 	);
 	
+	/********************************************************/
+	/* Health monitor; reports busted configs/DSP disasters */
+	/********************************************************/
+	
+	wire health;
+	wire peak_detect;
+	wire envl_detect;
+	
+	wire health_monitor_enable;
+	wire health_monitor_reset;
+	
+	health_monitor #(.data_width(data_width)) health_monitor (
+		.clk(clk),
+		.enable(health_monitor_enable),
+		
+		.reset(health_monitor_reset),
+		
+		.sample_valid(in_sample_valid),
+		.sample_in(out_samples[~current_pipeline]),
+		
+		.health(health),
+		
+		.peak_detect(peak_detect),
+		.envl_detect(envl_detect)
+	);
+	
 	/*****************/
 	/*****************/
 	/* Input/control */
@@ -215,7 +243,13 @@ module dsp_engine #(
 		
 		.invalid(invalid_command),
 		
-		.control_state(control_state)
+		.health(health),
+		.health_monitor_enable(health_monitor_enable),
+		.health_monitor_reset(health_monitor_reset),
+		
+		.control_state(control_state),
+		
+		.spi_byte_out(spi_byte_out)
 	);
 	
 	/*******/

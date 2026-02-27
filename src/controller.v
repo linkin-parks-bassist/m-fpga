@@ -42,9 +42,14 @@ module control_unit
 		
 		output reg next,
 		
+		output reg health_monitor_enable,
+		output reg health_monitor_reset,
+		input wire health,
+		
 		output reg invalid,
 		
-		output wire [7:0] control_state
+		output wire [7:0] control_state,
+		output reg  [7:0] spi_byte_out
 	);
 	
 	reg [7:0] in_byte_latched;
@@ -89,11 +94,13 @@ module control_unit
 		end
 	endgenerate
 	
-    localparam READY      = 3'd0;
-    localparam LISTEN     = 3'd1;
-    localparam EXECUTE    = 3'd2;
-    localparam SWAP_WAIT  = 3'd3;
-    localparam RESET_WAIT = 3'd4;
+    localparam READY      		  = 3'd0;
+    localparam LISTEN     		  = 3'd1;
+    localparam EXECUTE    		  = 3'd2;
+    localparam SWAP_WARMUP  	  = 3'd3;
+    localparam SWAP_WAIT  		  = 3'd4;
+    localparam RESET_WAIT 		  = 3'd5;
+    localparam INITIAL_RESET_WAIT = 3'd6;
 
 	wire front_pipeline = current_pipeline;
 	wire back_pipeline = ~current_pipeline;
@@ -110,6 +117,17 @@ module control_unit
     reg programming;
     reg ignore_command;
     reg timeout_active;
+    
+    localparam warmup_cycles = 326530;
+    
+    reg warmup;
+    reg [31:0] warmup_ctr;
+    
+    localparam SPI_RESPONSE_OK 				= 8'd0;
+    localparam SPI_RESPONSE_INITIALISING	= 8'd1;
+    localparam SPI_RESPONSE_PROGRAMMING 	= 8'd2;
+    localparam SPI_RESPONSE_REJECTED		= 8'd3;
+    localparam SPI_RESPONSE_TIMEOUT			= 8'd4;
 
 	always @(posedge clk) begin
 		reg_writes_commit <= 0;
@@ -132,12 +150,15 @@ module control_unit
         timeout <= 0;
         
         state_prev <= state;
+        
+        health_monitor_reset <= 0;
+		
+		pipeline_enables <= 2'b00;
 		
 		if (reset) begin
-			state 		<= RESET_WAIT;
-            state_prev  <= RESET_WAIT;
+			state 		<= INITIAL_RESET_WAIT;
+            state_prev  <= INITIAL_RESET_WAIT;
             
-			pipeline_enables 	<= 2'b00;
 			pipeline_full_reset <= 2'b11;
 			wait_one <= 1;
 			current_pipeline <= 0;
@@ -145,6 +166,7 @@ module control_unit
 			byte_ctr <= 0;
 			bytes_in <= 0;
 
+			health_monitor_enable <= 0;
 
             total_bytes <= 0;
             
@@ -158,6 +180,8 @@ module control_unit
             
 			timeout_ctr <= 0;
             timeout_max <= `CONTROLLER_TIMEOUT_CYCLES;
+            
+            spi_byte_out <= SPI_RESPONSE_INITIALISING;
 		end else if (timeout) begin
 			pipeline_full_reset[back_pipeline] <= 1;
 			programming 	<= 0;
@@ -165,7 +189,8 @@ module control_unit
 			timeout_ctr 	<= 0;
 			ignore_command  <= 0;
 			state 			<= RESET_WAIT;
-            timeout_max <= `CONTROLLER_TIMEOUT_CYCLES;
+            timeout_max 	<= `CONTROLLER_TIMEOUT_CYCLES;
+            spi_byte_out 	<= SPI_RESPONSE_TIMEOUT;
             
             timeout_blinker_ctr <= 32'd112500000;
 		end else begin
@@ -202,6 +227,9 @@ module control_unit
 							`COMMAND_BEGIN_PROGRAM: begin
 								programming <= 1;
 								state <= READY;
+								spi_byte_out <= 0;
+								
+								spi_byte_out <= SPI_RESPONSE_PROGRAMMING;
 							end
 						
 							`COMMAND_WRITE_BLOCK_INSTR: begin
@@ -248,13 +276,17 @@ module control_unit
 							
 							`COMMAND_END_PROGRAM: begin
 								if (programming) begin
-									programming    <= 0;
-									swap_pipelines <= 1;
+									programming <= 0;
 									
 									reg_writes_commit[back_pipeline] <= 1;
 									pipeline_enables [back_pipeline] <= 1;
 									
-									state <= SWAP_WAIT;
+									health_monitor_enable <= 1;
+									health_monitor_reset <= 1;
+									
+									warmup_ctr <= 0;
+									
+									state <= SWAP_WARMUP;
 								end else begin
 									state <= READY;
 								end
@@ -376,6 +408,32 @@ module control_unit
 					endcase
 				end
 				
+				SWAP_WARMUP: begin
+					timeout_active <= 0;
+					if (warmup_ctr == warmup_cycles) begin
+						if (health) begin
+							swap_pipelines <= 1;
+							
+							
+							swap_pipelines <= 1;
+							
+							state <= SWAP_WAIT;
+							spi_byte_out <= SPI_RESPONSE_OK;
+						end else begin
+							pipeline_full_reset[back_pipeline] <= 1;
+							state <= READY;
+							spi_byte_out <= SPI_RESPONSE_REJECTED;
+						end
+						
+						health_monitor_enable <= 0;
+						health_monitor_reset <= 1;
+						
+						warmup_ctr <= 0;
+					end else begin
+						warmup_ctr <= warmup_ctr + 1;
+					end
+				end
+				
 				SWAP_WAIT: begin
 					timeout_active <= 1;
 					if (!wait_one && !pipelines_swapping) begin
@@ -392,8 +450,16 @@ module control_unit
 					timeout_active <= 1;
 					if (!wait_one && !(|pipeline_resetting)) begin
 						state <= READY;
+					end
+				end
+				
+				INITIAL_RESET_WAIT: begin
+					timeout_active <= 1;
+					if (!wait_one && !(|pipeline_resetting[front_pipeline])) begin
+						state <= READY;
 						pipeline_enables[front_pipeline] <= 1;
-						pipeline_enables[ back_pipeline] <= 0;
+						
+						spi_byte_out <= SPI_RESPONSE_OK;
 					end
 				end
 			endcase

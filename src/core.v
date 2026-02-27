@@ -68,6 +68,23 @@ module dsp_core #(
 	
 	assign out = {5'd0, any_zero_madds, recent_zero_write, any_zero_writes};
 	
+	reg enable_req_r;
+	reg enable_core;
+	
+	always @(posedge clk) begin
+		if (reset || full_reset) begin
+			enable_core <= 0;
+			enable_req_r <= 0;
+		end else begin
+			if (enable)	enable_req_r <= 1;
+			
+			if (enable_req_r && tick) begin
+				enable_core <= 1;
+				enable_req_r <= 0;
+			end
+		end
+	end
+	
 	reg any_zero_writes;
     reg recent_zero_write;
     reg any_zero_madds;
@@ -86,7 +103,7 @@ module dsp_core #(
             zero_write_ctr <= 0;
             recent_zero_write <= 0;
             any_zero_madds <= 0;
-        end else if (enable) begin
+        end else if (enable_core) begin
             any_delay_reqs <= any_delay_reqs | delay_read_req | delay_write_req;
             any_delay_acks <= any_delay_acks | delay_read_valid | delay_write_ack;
             
@@ -313,7 +330,7 @@ module dsp_core #(
 	block_fetch_decode_stage #(.data_width(data_width), .n_blocks(n_blocks)) fetch_decode_stage (
 		.clk(clk),
 		.reset(reset | resetting),
-		.enable(enable),
+		.enable(enable_core),
 	
 		.n_blocks_running(n_blocks_running),
 		
@@ -371,7 +388,7 @@ module dsp_core #(
 		.clk(clk),
 		.reset(reset | resetting),
 		
-		.enable(enable),
+		.enable(enable_core),
 	
 		.in_valid(out_valid_bfds),
 		.in_ready(out_ready_bfds),
@@ -461,7 +478,7 @@ module dsp_core #(
 		.clk(clk),
 		.reset(reset | resetting),
 		
-		.enable(enable),
+		.enable(enable_core),
 	
 		.sample_tick(tick),
 		
@@ -530,7 +547,7 @@ module dsp_core #(
 		.clk(clk),
 		.reset(reset | resetting),
 		
-		.enable(enable),
+		.enable(enable_core),
 		
 		.in_valid(out_valid_router[`INSTR_BRANCH_MADD]),
 		.in_ready(in_ready_madd),
@@ -569,7 +586,7 @@ module dsp_core #(
 		.clk(clk),
 		.reset(reset | resetting),
 		
-		.enable(enable),
+		.enable(enable_core),
 		
 		.in_valid(out_valid_router[`INSTR_BRANCH_MAC]),
 		.in_ready(in_ready_mac),
@@ -608,7 +625,7 @@ module dsp_core #(
 		.clk(clk),
 		.reset(reset | resetting),
 		
-		.enable(enable),
+		.enable(enable_core),
 				
 		.in_valid(out_valid_router[`INSTR_BRANCH_MISC]),
 		.in_ready(in_ready_misc),
@@ -650,7 +667,7 @@ module dsp_core #(
 		.clk(clk),
 		.reset(reset | resetting),
 		
-		.enable(enable),
+		.enable(enable_core),
 		
 		.in_valid(out_valid_router[`INSTR_BRANCH_DELAY]),
 		.in_ready(in_ready_delay),
@@ -695,7 +712,7 @@ module dsp_core #(
 		.clk(clk),
 		.reset(reset | resetting),
 		
-		.enable(enable),
+		.enable(enable_core),
 		
 		.in_valid(out_valid_router[`INSTR_BRANCH_LUT]),
 		.in_ready(in_ready_lut),
@@ -740,7 +757,7 @@ module dsp_core #(
 		.clk(clk),
 		.reset(reset | resetting),
 		
-		.enable(enable),
+		.enable(enable_core),
 		
 		.in_valid(out_valid_router[`INSTR_BRANCH_MEM]),
 		.in_ready(in_ready_mem),
@@ -787,7 +804,7 @@ module dsp_core #(
 	generate
 		for (k = 0; k < `N_INSTR_BRANCHES; k = k + 1) begin : commit_stages
 			commit_stage #(.data_width(data_width), .n_blocks(n_blocks)) commit_stage_inst
-				(.clk(clk), .enable(enable), .reset(reset | resetting), 
+				(.clk(clk), .enable(enable_core), .reset(reset | resetting), 
 				
 				  .in_valid(out_valid_final_stages[k]),  .in_ready(in_ready_commit_stage[k]), 
 				 .out_valid(out_valid_commit_stage[k]),  .out_ready(in_ready_commit_master[k]),
@@ -807,7 +824,7 @@ module dsp_core #(
 		.clk(clk),
 		.reset(reset | resetting),
 		
-		.enable(enable),
+		.enable(enable_core),
 		
 		.sample_tick(tick),
 		.sample_in(sample_in),
@@ -1026,7 +1043,7 @@ module dsp_core #(
 				resetting 	<= 0;
 				ready		<= 1;
 			end
-		end else if (enable) begin
+		end else if (enable_core) begin
 			
 		end
 	end

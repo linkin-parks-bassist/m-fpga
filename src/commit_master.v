@@ -67,15 +67,17 @@ module commit_master #(parameter data_width = 16, parameter n_blocks = 256, para
 		
 		if (reset) begin
 			next_commit_id <= 0;
-		end else if (enable && sample_tick) begin
+		end else if (sample_tick) begin
 			channel_write_addr 		<= 0;
 			channel_write_val  		<= sample_in;
 			channel_write_enable 	<= 1;
 			
-			in_ready_prev <= in_ready_prev;
-			acc_overwrite_prev <= acc_overwrite_prev;
-			result_prev <= result_prev;
-			dest_prev <= dest_prev;
+			if (enable) begin
+				in_ready_prev <= in_ready_prev;
+				acc_overwrite_prev <= acc_overwrite_prev;
+				result_prev <= result_prev;
+				dest_prev <= dest_prev;
+			end
 		end else if (enable) begin
 			if (|in_ready) next_commit_id <= next_commit_id + 1;
 			
