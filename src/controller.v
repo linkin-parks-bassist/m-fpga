@@ -53,6 +53,7 @@ module control_unit
 	localparam instr_n_bytes = `BLOCK_INSTR_WIDTH / 8;
 	
 	reg [2:0] state = READY;
+	reg [2:0] state_prev = READY;
     assign control_state = {5'b0, state[2:0]};
 	
 	reg wait_one = 0;
@@ -100,9 +101,12 @@ module control_unit
     reg [15 : 0] total_bytes;
     
     reg [31:0] timeout_ctr;
+    reg [31:0] timeout_max;
     reg timeout;
     
     reg programming;
+    reg ignore_command;
+    reg timeout_active;
 
 	always @(posedge clk) begin
 		reg_writes_commit <= 0;
@@ -123,32 +127,47 @@ module control_unit
 		set_output_gain <= 0;
 
         timeout <= 0;
+        
+        state_prev <= state;
 		
 		if (reset) begin
-			timeout_ctr <= 0;
-			state <= READY;
-			pipeline_enables <= 2'b01;
+			state 		<= RESET_WAIT;
+            state_prev  <= RESET_WAIT;
+            
+			pipeline_enables 	<= 2'b00;
+			pipeline_full_reset <= 2'b11;
+			wait_one <= 1;
 			current_pipeline <= 0;
 			
 			byte_ctr <= 0;
 			bytes_in <= 0;
 
-			pipeline_full_reset <= 2'b11;
 
             total_bytes <= 0;
             
             programming <= 0;
             reg_target <= 0;
+            
+            ignore_command <= 0;
+            timeout_active <= 0;
+			
+			ignore_command <= 0;
+            
+			timeout_ctr <= 0;
+            timeout_max <= `CONTROLLER_TIMEOUT_CYCLES;
 		end else if (timeout) begin
 			pipeline_full_reset[back_pipeline] <= 1;
-			programming <= 0;
-			timeout_ctr <= 0;
-			state <= RESET_WAIT;
+			programming 	<= 0;
+			timeout_active 	<= 0;
+			timeout_ctr 	<= 0;
+			ignore_command  <= 0;
+			state 			<= RESET_WAIT;
+            timeout_max <= `CONTROLLER_TIMEOUT_CYCLES;
 		end else begin
-			if (!programming || in_valid) begin
-				timeout_ctr <= 0;
-			end else begin
-				if (timeout_ctr == `CONTROLLER_TIMEOUT_CYCLES - 1)
+			if (timeout_active | programming) begin
+				if ((wait_one && in_valid) || state_prev != state)
+					timeout_ctr <= 0;
+				else if (timeout_ctr == timeout_max - 1)
 					timeout <= 1;
 				else
 					timeout_ctr <= timeout_ctr + 1;
@@ -156,6 +175,9 @@ module control_unit
 		
 			case (state)
 				READY: begin
+					timeout_active <= 0;
+					ignore_command <= 0;
+					
 					if (!wait_one && in_valid) begin
 						command <= in_byte;
 						wait_one <= 1;
@@ -177,14 +199,14 @@ module control_unit
 							`COMMAND_WRITE_BLOCK_INSTR: begin
 								bytes_needed <= block_bytes + instr_bytes;
 								
-								if (!programming) state <= READY;
+								if (!programming) ignore_command <= 1;
 							end
 							
 							`COMMAND_WRITE_BLOCK_REG_0: begin
 								reg_target <= 0;
 								bytes_needed <= block_bytes + data_bytes;
 								
-								if (!programming) state <= READY;
+								if (!programming) ignore_command <= 1;
 							end
 							
 							
@@ -192,13 +214,13 @@ module control_unit
 								reg_target <= 1;
 								bytes_needed <= block_bytes + data_bytes;
 								
-								if (!programming) state <= READY;
+								if (!programming) ignore_command <= 1;
 							end
 							
 							`COMMAND_ALLOC_DELAY: begin
 								bytes_needed <= 2 * delay_addr_bytes;
 								
-								if (!programming) state <= READY;
+								if (!programming) ignore_command <= 1;
 							end
 							
 							`COMMAND_UPDATE_BLOCK_REG_0: begin
@@ -246,13 +268,16 @@ module control_unit
 				end
 				
 				LISTEN: begin
+					timeout_active <= 1;
 					if (!wait_one && in_valid) begin
 						bytes_in <= (bytes_in << 8) | in_byte;
 						
-						if (byte_ctr == bytes_needed - 1)
-							state <= EXECUTE;
-						else
+						if (byte_ctr == bytes_needed - 1) begin
+							state <= ignore_command ? READY : EXECUTE;
+							timeout_active <= 0;
+						end else begin
 							byte_ctr <= byte_ctr + 1;
+						end
 						
 						next <= 1;
 						wait_one <= 1;
@@ -271,8 +296,10 @@ module control_unit
 						end
 
 						`COMMAND_WRITE_BLOCK_REG_0: begin
-							if (!pipelines_swapping && !pipeline_regfiles_syncing[back_pipeline]) begin
+							timeout_active <= 1;
+							if (!pipelines_swapping && !pipeline_resetting[back_pipeline] && !pipeline_regfiles_syncing[back_pipeline]) begin
 								block_target <= reg_write_block;
+								reg_target <= 0;
 								
 								data_out <= {byte_1_in, byte_0_in};
 								block_reg_write[back_pipeline] <= 1;
@@ -281,8 +308,10 @@ module control_unit
 						end
 						
 						`COMMAND_WRITE_BLOCK_REG_1: begin
-							if (!pipelines_swapping && !pipeline_regfiles_syncing[back_pipeline]) begin
+							timeout_active <= 1;
+							if (!pipelines_swapping && !pipeline_resetting[back_pipeline] && !pipeline_regfiles_syncing[back_pipeline]) begin
 								block_target <= reg_write_block;
+								reg_target <= 1;
 								
 								data_out <= {byte_1_in, byte_0_in};
 								block_reg_write[back_pipeline] <= 1;
@@ -298,8 +327,12 @@ module control_unit
 						end
 
 						`COMMAND_UPDATE_BLOCK_REG_0: begin
-							if (!pipelines_swapping && !pipeline_regfiles_syncing[front_pipeline]) begin
+							timeout_active <= 1;
+							if (pipelines_swapping) begin
+								state <= READY;
+							end else if (!pipeline_regfiles_syncing[front_pipeline]) begin
 								block_target <= reg_write_block;
+								reg_target <= 0;
 								
 								data_out <= {byte_1_in, byte_0_in};
 								block_reg_write[front_pipeline] <= 1;
@@ -308,8 +341,12 @@ module control_unit
 						end
 
 						`COMMAND_UPDATE_BLOCK_REG_1: begin
-							if (!pipelines_swapping && !pipeline_regfiles_syncing[front_pipeline]) begin
+							timeout_active <= 1;
+							if (pipelines_swapping) begin
+								state <= READY;
+							end else if (!pipeline_regfiles_syncing[front_pipeline]) begin
 								block_target <= reg_write_block;
+								reg_target <= 1;
 								
 								data_out <= {byte_1_in, byte_0_in};
 								block_reg_write[front_pipeline] <= 1;
@@ -332,8 +369,9 @@ module control_unit
 				end
 				
 				SWAP_WAIT: begin
+					timeout_active <= 1;
 					if (!wait_one && !pipelines_swapping) begin
-						current_pipeline 		<= ~current_pipeline;
+						current_pipeline <= ~current_pipeline;
 						pipeline_full_reset[front_pipeline] <= 1;
 						pipeline_enables   [front_pipeline] <= 0;
 						
@@ -343,8 +381,11 @@ module control_unit
 				end
 				
 				RESET_WAIT: begin
-					if (!wait_one && pipeline_resetting[back_pipeline]) begin
+					timeout_active <= 1;
+					if (!wait_one && !(|pipeline_resetting)) begin
 						state <= READY;
+						pipeline_enables[front_pipeline] <= 1;
+						pipeline_enables[ back_pipeline] <= 0;
 					end
 				end
 			endcase

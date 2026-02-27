@@ -293,7 +293,7 @@ module operand_fetch_substage #(parameter data_width = 16, parameter n_blocks = 
 	
 	reg [$clog2(`N_MISC_OPS) - 1 : 0] misc_op_latched;
 
-	wire  [3 : 0] arg_pending_writes = channels_scoreboard[src_live];
+	wire  [3 : 0] arg_pending_writes = channels_scoreboard[src_latched];
 	
 	reg signed [data_width - 1 : 0] arg_latched;
 	wire arg_resolved = ~arg_needed_latched | arg_valid;
